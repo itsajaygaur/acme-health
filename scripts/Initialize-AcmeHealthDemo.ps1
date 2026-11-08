@@ -89,21 +89,33 @@ ALTER TABLE dbo.job_descriptions ADD last_edited_by NVARCHAR(255) NULL;
 ALTER TABLE dbo.configuration ADD is_active BIT NOT NULL CONSTRAINT DF_demo_configuration_is_active DEFAULT (0);
 DECLARE @preferencesPk SYSNAME;
 SELECT @preferencesPk = kc.name FROM sys.key_constraints kc WHERE kc.parent_object_id = OBJECT_ID(N'dbo.UserSearchPreferences') AND kc.type = 'PK';
-IF @preferencesPk IS NOT NULL EXEC(N'ALTER TABLE dbo.UserSearchPreferences DROP CONSTRAINT ' + QUOTENAME(@preferencesPk));
+IF @preferencesPk IS NOT NULL
+BEGIN
+  DECLARE @dropPreferencesPkSql NVARCHAR(MAX) = N'ALTER TABLE dbo.UserSearchPreferences DROP CONSTRAINT ' + QUOTENAME(@preferencesPk);
+  EXEC sys.sp_executesql @dropPreferencesPkSql;
+END;
 ALTER TABLE dbo.UserSearchPreferences ALTER COLUMN UserId INT NULL;
 ALTER TABLE dbo.UserSearchPreferences ADD CONSTRAINT PK_demo_UserSearchPreferences PRIMARY KEY (Id);
 ALTER TABLE dbo.UserSearchPreferences ADD username NVARCHAR(255) NULL;
 ALTER TABLE dbo.notifications ADD username NVARCHAR(255) NULL;
 DECLARE @notificationPk SYSNAME;
 SELECT @notificationPk = kc.name FROM sys.key_constraints kc WHERE kc.parent_object_id = OBJECT_ID(N'dbo.notifications') AND kc.type = 'PK';
-IF @notificationPk IS NOT NULL EXEC(N'ALTER TABLE dbo.notifications DROP CONSTRAINT ' + QUOTENAME(@notificationPk));
+IF @notificationPk IS NOT NULL
+BEGIN
+  DECLARE @dropNotificationPkSql NVARCHAR(MAX) = N'ALTER TABLE dbo.notifications DROP CONSTRAINT ' + QUOTENAME(@notificationPk);
+  EXEC sys.sp_executesql @dropNotificationPkSql;
+END;
 ALTER TABLE dbo.notifications ALTER COLUMN user_id INT NULL;
 ALTER TABLE dbo.notifications ADD CONSTRAINT PK_demo_notifications PRIMARY KEY (id);
 ALTER TABLE dbo.job_reviewers ADD id INT IDENTITY(1,1) NOT NULL;
 ALTER TABLE dbo.job_reviewers ADD reviewer NVARCHAR(255) NULL;
 DECLARE @reviewerPk SYSNAME;
 SELECT @reviewerPk = kc.name FROM sys.key_constraints kc WHERE kc.parent_object_id = OBJECT_ID(N'dbo.job_reviewers') AND kc.type = 'PK';
-IF @reviewerPk IS NOT NULL EXEC(N'ALTER TABLE dbo.job_reviewers DROP CONSTRAINT ' + QUOTENAME(@reviewerPk));
+IF @reviewerPk IS NOT NULL
+BEGIN
+  DECLARE @dropReviewerPkSql NVARCHAR(MAX) = N'ALTER TABLE dbo.job_reviewers DROP CONSTRAINT ' + QUOTENAME(@reviewerPk);
+  EXEC sys.sp_executesql @dropReviewerPkSql;
+END;
 ALTER TABLE dbo.job_reviewers ALTER COLUMN user_id INT NULL;
 ALTER TABLE dbo.job_reviewers ADD CONSTRAINT PK_demo_job_reviewers PRIMARY KEY (id);
 
