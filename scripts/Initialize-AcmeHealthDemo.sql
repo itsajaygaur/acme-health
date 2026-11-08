@@ -482,6 +482,7 @@ CREATE TABLE dbo.essential_functions (
   id INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
   job_id INT NOT NULL,
   job_description_id INT NULL,
+  has_edit BIT NOT NULL CONSTRAINT DF_demo_essential_functions_has_edit DEFAULT (0),
   function_text NVARCHAR(MAX) NOT NULL,
   sort_order INT NOT NULL CONSTRAINT DF_demo_essential_functions_sort DEFAULT (1),
   created_at DATETIME2(7) NOT NULL CONSTRAINT DF_demo_essential_functions_created DEFAULT (SYSUTCDATETIME()),
@@ -490,11 +491,11 @@ CREATE TABLE dbo.essential_functions (
 CREATE TABLE dbo.comments (
   id INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
   job_id INT NOT NULL,
-  comment NVARCHAR(MAX) NOT NULL,
+  comment NVARCHAR(MAX)'
+    + N' NOT NULL,
   category NVARCHAR(100) NULL,
   author NVARCHAR(255) NULL,
-  is_critical '
-    + N'BIT NULL,
+  is_critical BIT NULL,
   created_at DATETIME2(7) NOT NULL CONSTRAINT DF_demo_comments_created DEFAULT (SYSUTCDATETIME())
 );
 CREATE TABLE dbo.audit_log (

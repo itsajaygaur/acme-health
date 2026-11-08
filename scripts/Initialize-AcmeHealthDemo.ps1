@@ -123,6 +123,7 @@ CREATE TABLE dbo.essential_functions (
   id INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
   job_id INT NOT NULL,
   job_description_id INT NULL,
+  has_edit BIT NOT NULL CONSTRAINT DF_demo_essential_functions_has_edit DEFAULT (0),
   function_text NVARCHAR(MAX) NOT NULL,
   sort_order INT NOT NULL CONSTRAINT DF_demo_essential_functions_sort DEFAULT (1),
   created_at DATETIME2(7) NOT NULL CONSTRAINT DF_demo_essential_functions_created DEFAULT (SYSUTCDATETIME()),
