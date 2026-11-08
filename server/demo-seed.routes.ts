@@ -117,7 +117,8 @@ WHERE kc.parent_object_id = OBJECT_ID(N'dbo.UserSearchPreferences')
 IF @preferencesPk IS NOT NULL
 BEGIN
   DECLARE @dropPreferencesPkSql NVARCHAR(MAX) =
-    N'ALTER TABLE dbo.UserSearchPreferences DROP CONSTRAINT ' + QUOTENAME(@preferencesPk);
+    N'ALTER TABLE dbo.UserSearchPreferences DROP CONSTRAINT [' +
+    REPLACE(@preferencesPk, N']', N']]') + N']';
   EXEC sys.sp_executesql @dropPreferencesPkSql;
 END;
 ALTER TABLE dbo.UserSearchPreferences ALTER COLUMN UserId INT NULL;
@@ -132,7 +133,8 @@ WHERE kc.parent_object_id = OBJECT_ID(N'dbo.notifications')
 IF @notificationPk IS NOT NULL
 BEGIN
   DECLARE @dropNotificationPkSql NVARCHAR(MAX) =
-    N'ALTER TABLE dbo.notifications DROP CONSTRAINT ' + QUOTENAME(@notificationPk);
+    N'ALTER TABLE dbo.notifications DROP CONSTRAINT [' +
+    REPLACE(@notificationPk, N']', N']]') + N']';
   EXEC sys.sp_executesql @dropNotificationPkSql;
 END;
 ALTER TABLE dbo.notifications ALTER COLUMN user_id INT NULL;
@@ -147,7 +149,8 @@ WHERE kc.parent_object_id = OBJECT_ID(N'dbo.job_reviewers')
 IF @reviewerPk IS NOT NULL
 BEGIN
   DECLARE @dropReviewerPkSql NVARCHAR(MAX) =
-    N'ALTER TABLE dbo.job_reviewers DROP CONSTRAINT ' + QUOTENAME(@reviewerPk);
+    N'ALTER TABLE dbo.job_reviewers DROP CONSTRAINT [' +
+    REPLACE(@reviewerPk, N']', N']]') + N']';
   EXEC sys.sp_executesql @dropReviewerPkSql;
 END;
 ALTER TABLE dbo.job_reviewers ALTER COLUMN user_id INT NULL;

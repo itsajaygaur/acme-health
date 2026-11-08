@@ -438,7 +438,8 @@ WHERE kc.parent_object_id = OBJECT_ID(N''dbo.UserSearchPreferences'')
 IF @preferencesPk IS NOT NULL
 BEGIN
   DECLARE @dropPreferencesPkSql NVARCHAR(MAX) =
-    N''ALTER TABLE dbo.UserSearchPreferences DROP CONSTRAINT '' + QUOTENAME(@preferencesPk);
+    N''ALTER TABLE dbo.UserSearchPreferences DROP CONSTRAINT ['' +
+    REPLACE(@preferencesPk, N'']'', N'']]'') + N'']'';
   EXEC sys.sp_executesql @dropPreferencesPkSql;
 END;
 ALTER TABLE dbo.UserSearchPreferences ALTER COLUMN UserId INT NULL;
@@ -453,11 +454,12 @@ WHERE kc.parent_object_id = OBJECT_ID(N''dbo.notifications'')
 IF @notificationPk IS NOT NULL
 BEGIN
   DECLARE @dropNotificationPkSql NVARCHAR(MAX) =
-    N''ALTER TABLE dbo.notifications DROP CONSTRAINT '' + QUOTENAME(@notificationPk);
+    N''ALTER TABLE dbo.notifications DROP CONSTRAINT ['' +
+    REPLACE(@notificationPk, N'']'', N'']]'') + N'']'';
   EXEC sys.sp_executesql @dropNotificationPkSql;
 END;
-ALTER TABLE dbo.notifications ALTER COLUMN user_id IN' AS NVARCHAR(MAX))
-    + N'T NULL;
+ALTER T' AS NVARCHAR(MAX))
+    + N'ABLE dbo.notifications ALTER COLUMN user_id INT NULL;
 ALTER TABLE dbo.notifications ADD CONSTRAINT PK_demo_notifications PRIMARY KEY (id);
 ALTER TABLE dbo.job_reviewers ADD id INT IDENTITY(1,1) NOT NULL;
 ALTER TABLE dbo.job_reviewers ADD reviewer NVARCHAR(255) NULL;
@@ -469,7 +471,8 @@ WHERE kc.parent_object_id = OBJECT_ID(N''dbo.job_reviewers'')
 IF @reviewerPk IS NOT NULL
 BEGIN
   DECLARE @dropReviewerPkSql NVARCHAR(MAX) =
-    N''ALTER TABLE dbo.job_reviewers DROP CONSTRAINT '' + QUOTENAME(@reviewerPk);
+    N''ALTER TABLE dbo.job_reviewers DROP CONSTRAINT ['' +
+    REPLACE(@reviewerPk, N'']'', N'']]'') + N'']'';
   EXEC sys.sp_executesql @dropReviewerPkSql;
 END;
 ALTER TABLE dbo.job_reviewers ALTER COLUMN user_id INT NULL;
@@ -490,9 +493,9 @@ CREATE TABLE dbo.comments (
   comment NVARCHAR(MAX) NOT NULL,
   category NVARCHAR(100) NULL,
   author NVARCHAR(255) NULL,
-  is_critical BIT NULL,
-  created_at DATETIME2(7) NOT NULL CONSTRAINT DF_demo_comme'
-    + N'nts_created DEFAULT (SYSUTCDATETIME())
+  is_critical '
+    + N'BIT NULL,
+  created_at DATETIME2(7) NOT NULL CONSTRAINT DF_demo_comments_created DEFAULT (SYSUTCDATETIME())
 );
 CREATE TABLE dbo.audit_log (
   id INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
