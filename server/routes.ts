@@ -12,6 +12,7 @@ import {
 import dashboardRoutes from "./dashboard.routes";
 import notificationRoutes from "./notification.routes";
 import usersRoutes from "./users.routes";
+import demoSeedRoutes from "./demo-seed.routes";
 import { JobFinalReview } from "@shared/jobs.schema";
 import XLSX from "xlsx";
 // import sspi from "node-sspi";
@@ -56,6 +57,7 @@ export function createLdapClient(AD_CONFIG: LdapConfig) {
 
 export async function registerRoutes(app: Express): Promise<any> {
   // app.use("/api",authMiddleware);
+  app.use("/api/internal", demoSeedRoutes);
 
   // Dashboard summary endpoints
   app.use(

@@ -37,6 +37,14 @@ cpSync(path.join(root, "dist", "public"), staticDir, { recursive: true });
 console.log("[build] bundling api function ...");
 const funcDir = path.join(outDir, "functions", "api", "index.func");
 mkdirSync(funcDir, { recursive: true });
+const sqlAssetsDir = path.join(funcDir, "client");
+mkdirSync(sqlAssetsDir, { recursive: true });
+for (const file of [
+  "20250620-MSSQL-Table-Proc.sql",
+  "20250620-MSSQL-Data-Development-Purpose.sql",
+]) {
+  cpSync(path.join(root, "client", file), path.join(sqlAssetsDir, file));
+}
 
 await build({
   entryPoints: [path.join(root, "server", "vercel-entry.ts")],
