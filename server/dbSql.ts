@@ -18,13 +18,35 @@ function envBool(defaultValue: boolean, ...names: string[]): boolean {
   return ["1", "true", "yes", "on"].includes(value.toLowerCase());
 }
 
+// Accept the server formats people copy from SSMS / Azure connection strings:
+// "tcp:host,1433", "host,1433" and "host\\INSTANCE". tedious only understands a
+// bare host name, so passing these through verbatim fails with ENOTFOUND.
+function parseServer(raw: string): { host: string; port?: number; instanceName?: string } {
+  let value = raw.replace(/^tcp:/i, "");
+  let port: number | undefined;
+  const comma = value.lastIndexOf(",");
+  if (comma !== -1) {
+    port = parseInt(value.slice(comma + 1), 10);
+    value = value.slice(0, comma);
+  }
+  let instanceName: string | undefined;
+  const slash = value.indexOf("\\");
+  if (slash !== -1) {
+    instanceName = value.slice(slash + 1);
+    value = value.slice(0, slash);
+  }
+  return { host: value.trim(), port, instanceName };
+}
+
 function buildConfig(): sql.config {
-  const server = env("DB_SERVER", "MSSQL_SERVER", "SQL_SERVER");
+  const serverRaw = env("DB_SERVER", "MSSQL_SERVER", "SQL_SERVER");
+  const parsed = serverRaw ? parseServer(serverRaw) : undefined;
+  const server = parsed?.host;
   const database = env("DB_NAME", "DB_DATABASE", "MSSQL_DATABASE");
   const user = env("DB_USER", "MSSQL_USER");
   const password = env("DB_PASSWORD", "MSSQL_PASSWORD");
   const portRaw = env("DB_PORT", "MSSQL_PORT");
-  const port = portRaw ? parseInt(portRaw, 10) : 1433;
+  const port = portRaw ? parseInt(portRaw, 10) : (parsed?.port ?? 1433);
 
   const missing: string[] = [];
   if (!server) missing.push("DB_SERVER (or MSSQL_SERVER)");
@@ -49,6 +71,11 @@ function buildConfig(): sql.config {
     connectionTimeout: parseInt(env("DB_CONNECTION_TIMEOUT") ?? "", 10) || 15000,
     requestTimeout: parseInt(env("DB_REQUEST_TIMEOUT") ?? "", 10) || 30000,
     options: {
+      // A named instance is resolved via SQL Browser (UDP 1434) unless a port
+      // is given; on Vercel prefer setting DB_PORT explicitly.
+      ...(parsed?.instanceName && !portRaw && !parsed.port
+        ? { instanceName: parsed.instanceName }
+        : {}),
       encrypt: envBool(true, "DB_ENCRYPT", "MSSQL_ENCRYPT"),
       trustServerCertificate: envBool(
         true,
