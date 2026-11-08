@@ -13,7 +13,9 @@ DECLARE @sql_batch NVARCHAR(MAX);
 BEGIN TRY
   BEGIN TRANSACTION;
   IF EXISTS (SELECT 1 FROM sys.tables WHERE is_ms_shipped = 0)
-    THROW 51000, 'Refusing to initialize: the database already contains user tables.', 1;
+  BEGIN
+    ;THROW 51000, 'Refusing to initialize: the database already contains user tables.', 1;
+  END;
   SET @sql_batch = CAST(N'/****** Object:  Table [dbo].[_data_load_errors]    Script Date: 6/20/2025 3:25:30 PM ******/
 SET ANSI_NULLS ON
 ' AS NVARCHAR(MAX));
