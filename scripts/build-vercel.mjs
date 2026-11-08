@@ -42,7 +42,7 @@ await build({
   entryPoints: [path.join(root, "server", "vercel-entry.ts")],
   bundle: true,
   platform: "node",
-  target: "node20",
+  target: "node22",
   format: "cjs",
   outfile: path.join(funcDir, "index.js"),
   logLevel: "warning",
@@ -64,7 +64,7 @@ writeFileSync(
   path.join(funcDir, ".vc-config.json"),
   JSON.stringify(
     {
-      runtime: "nodejs20.x",
+      runtime: "nodejs22.x",
       handler: "index.js",
       launcherType: "Nodejs",
       shouldAddHelpers: false,
