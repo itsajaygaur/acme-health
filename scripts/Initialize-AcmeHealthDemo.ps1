@@ -1,10 +1,19 @@
 param(
-  [Parameter(Mandatory = $true)]
   [string]$ConnectionString
 )
 
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
+
+if (-not $ConnectionString) {
+  $secureConnectionString = Read-Host 'Enter the SQL Server connection string' -AsSecureString
+  $connectionStringPointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secureConnectionString)
+  try {
+    $ConnectionString = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($connectionStringPointer)
+  } finally {
+    [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($connectionStringPointer)
+  }
+}
 
 # This script is pinned to the reviewed bootstrap commit so the downloaded SQL
 # inputs cannot silently change when the repository's branches advance.
@@ -200,7 +209,7 @@ BEGIN
 END;
 '@
 
-$connection = New-Object System.Data.SqlClient.SqlConnection($ConnectionString)
+$connection = [System.Data.SqlClient.SqlConnection]::new($ConnectionString)
 $transaction = $null
 try {
   $connection.Open()
