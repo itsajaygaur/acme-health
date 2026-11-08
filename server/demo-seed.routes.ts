@@ -95,11 +95,15 @@ app.post("/seed-demo-database", async (req, res) => {
       /^\s*IF\s+object_id\([^)]*\)\s+is\s+not\s+null\s*\r?\n\s*DROP\s+TABLE\s+\[[^\]]+\]\s*\r?\nGO\s*$/gim,
       "",
     );
-    if (/^\s*DROP\s+TABLE\s+\[(?!#)[^\]]+\]/im.test(schema)) {
+    const repairedSchema = schema.replace(
+      /\/\*{6} Object:\s+StoredProcedure \[dbo\]\.\[sp_GetTopReviewers\][\s\S]*?\r?\n\*\/(?=\s*\/\*{6} Object:\s+StoredProcedure \[dbo\]\.\[sp_GetUserById\])/i,
+      "",
+    );
+    if (/^\s*DROP\s+TABLE\s+\[(?!#)[^\]]+\]/im.test(repairedSchema)) {
       throw new Error("Refusing to execute a schema script containing table drops");
     }
 
-    const firstProcedure = schema.search(/CREATE\s+OR\s+ALTER\s+(?:PROC|PROCEDURE)\b/i);
+    const firstProcedure = repairedSchema.search(/CREATE\s+OR\s+ALTER\s+(?:PROC|PROCEDURE)\b/i);
     if (firstProcedure < 0) {
       throw new Error("Schema script does not contain its stored procedures");
     }
@@ -208,9 +212,9 @@ INSERT INTO dbo.notification_settings (email_notifications, job_updates) VALUES 
       return res.status(409).json({ message: "Database is not empty" });
     }
 
-    await executeBatches(transaction, schema.slice(0, firstProcedure));
+    await executeBatches(transaction, repairedSchema.slice(0, firstProcedure));
     await transaction.request().batch(supplementalSchema);
-    await executeBatches(transaction, schema.slice(firstProcedure));
+    await executeBatches(transaction, repairedSchema.slice(firstProcedure));
     await executeBatches(transaction, seed);
     await transaction.request().batch(`
       UPDATE jr

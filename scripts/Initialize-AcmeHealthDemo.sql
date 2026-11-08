@@ -1223,37 +1223,7 @@ BEGIN
 END
 ';
   EXEC sys.sp_executesql @sql_batch;
-  SET @sql_batch = CAST(N'/****** Object:  StoredProcedure [dbo].[sp_GetTopReviewers]    Script Date: 6/20/2025 3:25:30 PM *****
-SET ANSI_NULLS ON
-' AS NVARCHAR(MAX));
-  EXEC sys.sp_executesql @sql_batch;
-  SET @sql_batch = CAST(N'SET QUOTED_IDENTIFIER ON
-' AS NVARCHAR(MAX));
-  EXEC sys.sp_executesql @sql_batch;
-  SET @sql_batch = CAST(N'-- Procedure: Get top reviewers by completed jobs
-CREATE OR ALTER  PROCEDURE [dbo].[sp_GetTopReviewers]
-    @limit INT = 10
-AS
-BEGIN
-    SET NOCOUNT ON;
-    
-    SELECT TOP (@limit)
-        u.id,
-        u.name,
-        u.email,
-        COUNT(j.id) AS completed_jobs,
-        AVG(DATEDIFF(DAY, j.created_at, j.last_updated)) AS avg_days_to_complete
-    FROM users u
-    INNER JOIN jobs j ON u.id = j.reviewer_id
-    WHERE j.status IN (''Completed'', ''Reviewed'')
-    AND u.status = ''Active''
-    GROUP BY u.id, u.name, u.email
-    ORDER BY completed_jobs DESC, avg_days_to_complete ASC;
-END;
-' AS NVARCHAR(MAX));
-  EXEC sys.sp_executesql @sql_batch;
-  SET @sql_batch = CAST(N'*/
-/****** Object:  StoredProcedure [dbo].[sp_GetUserById]    Script Date: 6/20/2025 3:25:30 PM ******/
+  SET @sql_batch = CAST(N'/****** Object:  StoredProcedure [dbo].[sp_GetUserById]    Script Date: 6/20/2025 3:25:30 PM ******/
 SET ANSI_NULLS ON
 ' AS NVARCHAR(MAX));
   EXEC sys.sp_executesql @sql_batch;

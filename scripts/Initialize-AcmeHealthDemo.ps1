@@ -72,6 +72,11 @@ $schema = [regex]::Replace(
   '(?im)^\s*IF\s+object_id\([^)]*\)\s+is\s+not\s+null\s*\r?\n\s*DROP\s+TABLE\s+\[[^\]]+\]\s*\r?\nGO\s*$\r?\n?',
   ''
 )
+$schema = [regex]::Replace(
+  $schema,
+  '/\*{6} Object:\s+StoredProcedure \[dbo\]\.\[sp_GetTopReviewers\][\s\S]*?\r?\n\*/(?=\s*/\*{6} Object:\s+StoredProcedure \[dbo\]\.\[sp_GetUserById\])',
+  ''
+)
 if ([regex]::IsMatch($schema, '(?im)^\s*DROP\s+TABLE\s+\[(?!#)[^\]]+\]')) {
   throw 'Refusing to continue: the source schema still contains a DROP TABLE statement.'
 }
