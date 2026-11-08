@@ -1,5 +1,5 @@
 import { Request, Response, Router } from "express";
-import { poolPromise } from "./dbSql";
+import { getPool } from "./dbSql";
 import sql, { IRecordSet } from "mssql";
 import { convertKeysToCamelCase } from "./helper";
 import { log } from "./logger";
@@ -10,7 +10,7 @@ app.get("/GetNotifications", async (req: Request, res: Response) => {
   try {
     // const userId = req.query.userId ? (req.query.userId as string) : null;
     const jobType = req.query.jobType ? (req.query.jobType as string) : null;
-    const pool = await poolPromise;
+    const pool = await getPool();
     const limit = req.query.limit ? parseInt(req.query.limit as string) : 10;
     const page = req.query.page ? parseInt(req.query.page as string) : 1;
     // const isHRLeader = req.query.isHRLeader === "true" ? true : false;
@@ -60,7 +60,7 @@ app.post("/UpdateStatus", async (req, res) => {
       return res.status(400).json({ message: "Notification id and action are required" });
     }
 
-    const pool = await poolPromise;
+    const pool = await getPool();
     const request = pool.request();
     request.input("notification_id", sql.Int, id);
     // Ensure status is sent as bit (0 or 1)

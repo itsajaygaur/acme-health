@@ -1,6 +1,6 @@
 import { Request, Response, type Express } from "express";
 
-import sql, { poolPromise } from "./dbSql";
+import sql, { getPool } from "./dbSql";
 import ldap, { SearchOptions } from "ldapjs";
 
 import {
@@ -311,7 +311,7 @@ export async function registerRoutes(app: Express): Promise<any> {
     async (req, res) => {
       try {
         log("Deleting essential function with ID:", req.params.id);
-        const pool = await poolPromise;
+        const pool = await getPool();
         const result = await pool
           .request()
           .input("id", sql.Numeric, req.params.id)
@@ -337,7 +337,7 @@ export async function registerRoutes(app: Express): Promise<any> {
     checkRole("manager:hrleader"),
     async (req, res) => {
       try {
-        const pool = await poolPromise;
+        const pool = await getPool();
         const result = await pool
           .request()
           .input("JobCode", sql.Int, req.query.jobCode)
@@ -406,7 +406,7 @@ export async function registerRoutes(app: Express): Promise<any> {
       } = req.query;
 
       try {
-        const pool = await poolPromise;
+        const pool = await getPool();
 
         const result = await pool
           .request()
@@ -446,7 +446,7 @@ export async function registerRoutes(app: Express): Promise<any> {
     checkRole("manager:hrleader"),
     async (req, res) => {
       try {
-        const pool = await poolPromise;
+        const pool = await getPool();
         const result = await pool.request().query(`
       SELECT 
         job_code, 
@@ -530,7 +530,7 @@ export async function registerRoutes(app: Express): Promise<any> {
     checkRole("manager:hrleader"),
     async (req, res) => {
       try {
-        const pool = await poolPromise;
+        const pool = await getPool();
         const result = await pool.request().execute("sp_GetAllJobFamilies");
         res.json(result.recordset);
       } catch (err) {
@@ -547,7 +547,7 @@ export async function registerRoutes(app: Express): Promise<any> {
     checkRole("manager:hrleader"),
     async (req, res) => {
       try {
-        const pool = await poolPromise;
+        const pool = await getPool();
         const result = await pool
           .request()
           .execute("sp_GetNotificationSettings");
@@ -574,7 +574,7 @@ export async function registerRoutes(app: Express): Promise<any> {
     async (req, res) => {
       const { emailNotifications, jobUpdates } = req.body;
       try {
-        const pool = await poolPromise;
+        const pool = await getPool();
         await pool
           .request()
           .input("email_notifications", sql.Bit, emailNotifications ? 1 : 0)
@@ -594,7 +594,7 @@ export async function registerRoutes(app: Express): Promise<any> {
     checkRole("manager:hrleader"),
     async (req, res) => {
       try {
-        const pool = await poolPromise;
+        const pool = await getPool();
         const result = await pool.request().query(`
           SELECT DISTINCT reviewer as id
           FROM job_reviewers
@@ -621,7 +621,7 @@ export async function registerRoutes(app: Express): Promise<any> {
     checkRole("manager:hrleader"),
     async (req, res) => {
       try {
-        const pool = await poolPromise;
+        const pool = await getPool();
 
         const result = await pool
           .request()
@@ -734,7 +734,7 @@ export async function registerRoutes(app: Express): Promise<any> {
         if (!reviewer) {
           return res.status(400).json({ message: "Reviewer is required" });
         }
-        const pool = await poolPromise;
+        const pool = await getPool();
 
         const allReviewers = await pool.query(
           "SELECT DISTINCT reviewer FROM job_reviewers"
@@ -899,7 +899,7 @@ async function deleteMissingUserComments(
     checkRole("manager"),
     async (req, res) => {
       try {
-        const pool = await poolPromise;
+        const pool = await getPool();
         const transaction = new sql.Transaction(pool);
         try {
           const { jobId, jobCode } = req.body;
@@ -945,7 +945,7 @@ async function deleteMissingUserComments(
     checkRole("manager"),
     async (req, res) => {
       try {
-        const pool = await poolPromise;
+        const pool = await getPool();
         const transaction = new sql.Transaction(pool);
         try {
           const { jobId, jobCode, name } = req.body;
@@ -994,7 +994,7 @@ async function deleteMissingUserComments(
     async (req, res) => {
       try {
         const { jobId, jobCode, newStatus } = req.body;
-        const pool = await poolPromise;
+        const pool = await getPool();
         const transaction = new sql.Transaction(pool);
         const message = `Job ${jobCode} Marked As Complete`;
         try {
@@ -1038,7 +1038,7 @@ async function deleteMissingUserComments(
     checkRole("manager:hrleader"),
     async (req: Request, res: Response) => {
       try {
-        const pool = await poolPromise;
+        const pool = await getPool();
         const user = req?.user;
         const isHRLeader = user?.group?.split(":")?.includes("hrleader");
         const result = await pool
@@ -1113,7 +1113,7 @@ async function deleteMissingUserComments(
         const configString = JSON.stringify(req.body.config);
         const encryptedConfig = encrypt(configString);
 
-        const pool = await poolPromise;
+        const pool = await getPool();
         const result = await pool
           .request()
           .input("title", sql.VarChar, req.body.title)
@@ -1141,7 +1141,7 @@ async function deleteMissingUserComments(
         const id = req.params.id as string;
         const configString = JSON.stringify(req.body.config);
         const encryptedConfig = encrypt(configString);
-        const pool = await poolPromise;
+        const pool = await getPool();
         const result = await pool
           .request()
           .input("json_text", sql.VarChar, encryptedConfig)
@@ -1168,7 +1168,7 @@ async function deleteMissingUserComments(
     async (req, res) => {
       try {
         const id = req.params.id as string;
-        const pool = await poolPromise;
+        const pool = await getPool();
         const result = await pool.request().input("id", sql.Int, Number(id))
           .query(`
         DELETE FROM configuration
@@ -1192,7 +1192,7 @@ async function deleteMissingUserComments(
     async (req, res) => {
       try {
         const title = req.params.title as string;
-        const pool = await poolPromise;
+        const pool = await getPool();
         const result = await pool.request().input("title", sql.VarChar, title)
           .query(`
         SELECT * FROM configuration
@@ -1222,7 +1222,7 @@ async function deleteMissingUserComments(
     checkRole("security"),
     async (req, res) => {
       try {
-        const pool = await poolPromise;
+        const pool = await getPool();
         const transaction = new sql.Transaction(pool);
         try {
           await transaction.begin();
@@ -1266,7 +1266,7 @@ async function deleteMissingUserComments(
         const { search, role, status, sortBy, sortOrder } = req.query;
         // const isHRLeader = req.query.isHRLeader === "true" ? true : false;
         const isHRLeader = req?.user?.group?.split(":")?.includes("hrleader");
-        const pool = await poolPromise;
+        const pool = await getPool();
         const result = await pool
           .request()
           .input("isHRLeader", sql.Bit, isHRLeader)
@@ -1301,7 +1301,7 @@ async function deleteMissingUserComments(
     checkRole("hrleader:manager"),
     async (req, res) => {
       try {
-        const pool = await poolPromise;
+        const pool = await getPool();
         const result = await pool.request().execute("dbo.sp_GetCompletedJobs");
         const jobs = result.recordset;
         // Format data
@@ -1457,7 +1457,7 @@ async function replaceResponsiblesAndReviewers(
 
 async function getAdConfig() {
   try {
-    const pool = await poolPromise;
+    const pool = await getPool();
     const result = await pool.request().query(`
       SELECT * FROM configuration
       WHERE title = 'active-directory' AND is_active = 1

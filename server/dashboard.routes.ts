@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { poolPromise } from "./dbSql";
+import { getPool } from "./dbSql";
 import sql, { IRecordSet } from "mssql";
 import { convertKeysToCamelCase } from "./helper";
 import { log } from "./logger";
@@ -8,7 +8,7 @@ const app = Router();
 
 app.get("/summary", async (req, res) => {
   try {
-    const pool = await poolPromise;
+    const pool = await getPool();
     const summary = await pool
       .request()
       .execute("dbo.[sp_GetDashboardSummary]");
@@ -38,7 +38,7 @@ app.get("/job-families", async (req, res) => {
     //const result = await storage.getJobFamilies(page, limit);
     //res.json(result);
 
-    const pool = await poolPromise;
+    const pool = await getPool();
     // Create a new request from the pool
     const request = pool.request();
 
@@ -94,7 +94,7 @@ app.get("/reviewers", async (req, res) => {
     //const result = await storage.getReviewers(page, limit);
     //res.json(result);
 
-    const pool = await poolPromise;
+    const pool = await getPool();
     // Create a new request from the pool
     const request = pool.request();
 

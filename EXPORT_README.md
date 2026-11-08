@@ -45,12 +45,18 @@ This is a React-based job management dashboard with Express.js backend and Micro
 4. Run `npm run dev` to start development server
 
 ## Database Configuration
-Set these environment variables:
-- MSSQL_SERVER
-- MSSQL_DATABASE
-- MSSQL_USER
-- MSSQL_PASSWORD
-- MSSQL_PORT
+Set these environment variables (on Vercel: Project Settings → Environment Variables, then redeploy):
+- `DB_SERVER` (or `MSSQL_SERVER`) – SQL Server host name
+- `DB_NAME` (or `MSSQL_DATABASE`)
+- `DB_USER` (or `MSSQL_USER`)
+- `DB_PASSWORD` (or `MSSQL_PASSWORD`)
+- `DB_PORT` (or `MSSQL_PORT`) – optional, defaults to 1433
+
+Optional: `DB_ENCRYPT` (default `true`), `DB_TRUST_SERVER_CERTIFICATE` (default `true`),
+`DB_CONNECTION_TIMEOUT` (ms, default 15000), `DB_POOL_MAX` (default 5).
+
+The database must accept connections from the internet: Vercel functions run on
+dynamic IPs, so a SQL Server firewall that only allows specific IPs will refuse them.
 
 ## Development Commands
 - `npm run dev` - Start development server

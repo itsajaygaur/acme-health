@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { poolPromise } from "./dbSql";
+import { getPool } from "./dbSql";
 import sql from "mssql";
 import { convertKeysToCamelCase } from "./helper";
 import "dotenv/config";
@@ -11,7 +11,7 @@ app.post("/savepreferences", async (req, res) => {
   try {
     const { pageName, preferences } = req.body;
     const id = req.user?.name
-    const pool = await poolPromise;
+    const pool = await getPool();
     const checkResult = await pool.request().input("id", sql.NVarChar, id).input("pageName", sql.NVarChar, pageName).query(`SELECT COUNT(*) as count FROM dbo.[UserSearchPreferences] WHERE username = @id AND PageName = @pageName`);
     let result;
     if (checkResult.recordset[0].count > 0) {
@@ -33,7 +33,7 @@ app.post("/savepreferences", async (req, res) => {
 app.get("/fetchpreferences/:pageName", async (req, res) => {
   try {
     const userId = req.user?.name
-    const pool = await poolPromise;
+    const pool = await getPool();
     const preferences = await pool.request().input("id", sql.NVarChar, userId).input("pageName", sql.NVarChar, req.params.pageName).query(`SELECT * FROM dbo.[UserSearchPreferences] WHERE username = @id AND PageName = @pageName`);
     if (!preferences) {
       return res.status(404).json({ message: "User preferences not found" });
