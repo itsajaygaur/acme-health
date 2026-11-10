@@ -1,7 +1,7 @@
-# Acme Health Job Management Dashboard
+# Acme Health — Job Management Dashboard
 
 ## Project Overview
-This is a React-based job management dashboard with Express.js backend and Microsoft SQL Server database integration.
+Acme Health is a React-based job management dashboard with Express.js backend and Microsoft SQL Server database integration.
 
 ## Technology Stack
 - **Frontend**: React 18 with TypeScript

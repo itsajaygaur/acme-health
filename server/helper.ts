@@ -152,9 +152,23 @@ export function objectGUIDToUUID(guidString: string) {
   return `${part1}-${part2}-${part3}-${part4}-${part5}`;
 }
 
+/**
+ * Does this user carry `role`? `user.group` is a colon-joined role string,
+ * e.g. "admin:hrleader".
+ *
+ * Unlike `checkRole` below this does NOT give `admin` a blanket pass, so it is
+ * the right tool when a rule has to distinguish an administrator from an HR
+ * leader rather than treat them alike.
+ */
+export function hasRole(user: { group?: string } | undefined, role: string): boolean {
+  return (user?.group ?? '').split(':').includes(role)
+}
+
 export function checkRole(allowedRole: string){
   return function(req: Request, res: Response, next: NextFunction){
     const userRoleArr: string[] = req.user.group.split(':')
+    // admin has access to everything
+    if(userRoleArr.includes('admin')) return next()
     const allowedRoleArr = allowedRole.split(':')
     const isAllowed = userRoleArr.some(c => allowedRoleArr.includes(c))
     if(!isAllowed) return res.status(403).json({message: `You don't have persmission!`})

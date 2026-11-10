@@ -1,18 +1,32 @@
 import { Request, Response, type Express } from "express";
 
-import sql, { poolPromise } from "./dbSql";
+import sql, { getPool } from "./dbSql";
 import ldap, { SearchOptions } from "ldapjs";
 
 import {
   checkRole,
   convertKeysToCamelCase,
   convertKeysToCamelCaseWithISO,
+  hasRole,
   objectGUIDToUUID,
 } from "./helper";
 import dashboardRoutes from "./dashboard.routes";
 import notificationRoutes from "./notification.routes";
 import usersRoutes from "./users.routes";
 import { JobFinalReview } from "@shared/jobs.schema";
+import {
+  RESET_REASON_MAX_LENGTH,
+  isResettableStatus,
+  resetTargetFor,
+} from "@shared/job-status";
+import {
+  commentSectionKey,
+  effectiveJobDescriptionSections,
+  groupSectionChanges,
+  isEditableSectionKey,
+  jdSectionLabel,
+  parseJobDescriptionSections,
+} from "@shared/job-description-fields";
 import XLSX from "xlsx";
 // import sspi from "node-sspi";
 import authMiddleware, { tokenBlacklist } from "./auth.middleware";
@@ -69,7 +83,7 @@ export async function registerRoutes(app: Express): Promise<any> {
   app.use(
     "/api/notifications",
     authMiddleware,
-    checkRole("hrleader:manager"),
+    checkRole("hrleader:functionalleader"),
     notificationRoutes
   );
 
@@ -77,11 +91,11 @@ export async function registerRoutes(app: Express): Promise<any> {
   app.use(
     "/api/users",
     authMiddleware,
-    checkRole("hrleader:manager"),
+    checkRole("hrleader:functionalleader"),
     usersRoutes
   );
 
-  app.post("/api/ed", authMiddleware, checkRole("security"), (req, res) => {
+  app.post("/api/ed", authMiddleware, checkRole("admin"), (req, res) => {
     try {
       const { value, method, key } = req.body;
       if (method === "encrypt") {
@@ -121,7 +135,7 @@ export async function registerRoutes(app: Express): Promise<any> {
 
   app.post("/api/ad/login", async (req, res) => {
     try {
-      const { username, password, domain = "@multihosp.net" } = req.body;
+      const { username, password, domain = "@acme-health.com" } = req.body;
       const adConfig = await getAdConfig();
       const client = createLdapClient(adConfig);
       const userPrincipal = `${username}${domain}`;
@@ -228,7 +242,7 @@ export async function registerRoutes(app: Express): Promise<any> {
   app.post(
     "/api/search",
     authMiddleware,
-    checkRole("security"),
+    checkRole("admin"),
     async (req, res) => {
       try {
         const { searchId } = req.body;
@@ -311,7 +325,7 @@ export async function registerRoutes(app: Express): Promise<any> {
     async (req, res) => {
       try {
         log("Deleting essential function with ID:", req.params.id);
-        const pool = await poolPromise;
+        const pool = await getPool();
         const result = await pool
           .request()
           .input("id", sql.Numeric, req.params.id)
@@ -334,10 +348,10 @@ export async function registerRoutes(app: Express): Promise<any> {
   app.get(
     "/api/job/finalreview",
     authMiddleware,
-    checkRole("manager:hrleader"),
+    checkRole("functionalleader:hrleader"),
     async (req, res) => {
       try {
-        const pool = await poolPromise;
+        const pool = await getPool();
         const result = await pool
           .request()
           .input("JobCode", sql.Int, req.query.jobCode)
@@ -362,16 +376,45 @@ export async function registerRoutes(app: Express): Promise<any> {
             jobCode: jobRow.Job_Code,
             jobTitle: jobRow.Job_Title,
             jobFamily: jobRow.Job_Family,
-            status: jobRow.STATUS, // Always 'Completed'
+            status: jobRow.STATUS,
             lastEditedBy: jobRow.LastEditedBy,
             lastUpdated: jobRow.Last_Updated,
             jobSummary: jobRow.JobSummary,
           };
 
+          // The remaining JD elements, read here rather than in
+          // sp_GetJobFinalReview so no procedure redeploy is needed. Same
+          // precedence as the summary and duties: reviewer edits, else the
+          // updated text, else the original.
+          const jdResult = await pool
+            .request()
+            .input("job_id", sql.Int, jobRow.Id).query(`
+            SELECT
+              jd.other_job_description,
+              jd.other_job_description_ai,
+              (
+                SELECT jsc.section_key, jsc.item_text, jsc.sort_order
+                FROM jd_section_changes jsc WITH (NOLOCK)
+                WHERE jsc.job_id = @job_id
+                ORDER BY jsc.section_key, jsc.sort_order
+                FOR JSON PATH
+              ) AS jd_section_changes
+            FROM job_descriptions jd WITH (NOLOCK)
+            WHERE jd.job_id = @job_id
+          `);
+          const jdRow = jdResult.recordset[0];
+          const jobDescriptionSections = effectiveJobDescriptionSections(
+            parseJobDescriptionSections(
+              jdRow?.other_job_description_ai || jdRow?.other_job_description
+            ),
+            groupSectionChanges(JSON.parse(jdRow?.jd_section_changes || "[]"))
+          );
+
           const finalReview: JobFinalReview = {
             essentialFunctions,
             reviewers,
             jobDetails,
+            jobDescriptionSections,
           };
 
           res.json(finalReview);
@@ -392,7 +435,7 @@ export async function registerRoutes(app: Express): Promise<any> {
   app.get(
     "/api/jobs",
     authMiddleware,
-    checkRole("manager:hrleader"),
+    checkRole("functionalleader:hrleader"),
     async (req, res) => {
       const {
         search_term = null,
@@ -406,7 +449,7 @@ export async function registerRoutes(app: Express): Promise<any> {
       } = req.query;
 
       try {
-        const pool = await poolPromise;
+        const pool = await getPool();
 
         const result = await pool
           .request()
@@ -443,10 +486,10 @@ export async function registerRoutes(app: Express): Promise<any> {
   app.get(
     "/api/export-jobs",
     authMiddleware,
-    checkRole("manager:hrleader"),
+    checkRole("functionalleader:hrleader"),
     async (req, res) => {
       try {
-        const pool = await poolPromise;
+        const pool = await getPool();
         const result = await pool.request().query(`
       SELECT 
         job_code, 
@@ -461,7 +504,7 @@ export async function registerRoutes(app: Express): Promise<any> {
           FOR JSON PATH
         ) AS reviewer_names,
         (
-          SELECT c.comment, c.category, c.author, FORMAT(c.created_at, 'MM-dd-yyyy HH:mm') AS createdAt, c.is_critical
+          SELECT c.comment, c.category, c.author, c.section_key, FORMAT(c.created_at, 'MM-dd-yyyy HH:mm') AS createdAt, c.is_critical
           FROM comments c WITH (NOLOCK)
           WHERE c.job_id = jobs.id
           ORDER BY c.created_at DESC
@@ -485,8 +528,8 @@ export async function registerRoutes(app: Express): Promise<any> {
             : "",
           "Comments": job.comments
             ? JSON.parse(job.comments)
-                ?.map((c: { comment: string; category: string; author: string; createdAt: string; isCritical: boolean }) => 
-                  `Category: ${c.category || "N/A"} | Author: ${c.author || "N/A"} | Created At: ${c.createdAt} | Critical: ${c.isCritical ? "Yes" : "No"}\nComment: ${c.comment || "N/A"}`
+                ?.map((c: { comment: string; category: string; author: string; section_key: string; createdAt: string; is_critical: boolean }) => 
+                  `Section: ${jdSectionLabel(c.section_key) || "N/A"} | Category: ${c.category || "N/A"} | Author: ${c.author || "N/A"} | Created At: ${c.createdAt} | Critical: ${c.is_critical ? "Yes" : "No"}\nComment: ${c.comment || "N/A"}`
                 )
                 ?.join("\n\n")
             : "",
@@ -527,10 +570,10 @@ export async function registerRoutes(app: Express): Promise<any> {
   app.get(
     "/api/all-job-families",
     authMiddleware,
-    checkRole("manager:hrleader"),
+    checkRole("functionalleader:hrleader"),
     async (req, res) => {
       try {
-        const pool = await poolPromise;
+        const pool = await getPool();
         const result = await pool.request().execute("sp_GetAllJobFamilies");
         res.json(result.recordset);
       } catch (err) {
@@ -544,10 +587,10 @@ export async function registerRoutes(app: Express): Promise<any> {
   app.get(
     "/api/notification-settings",
     authMiddleware,
-    checkRole("manager:hrleader"),
+    checkRole("functionalleader:hrleader"),
     async (req, res) => {
       try {
-        const pool = await poolPromise;
+        const pool = await getPool();
         const result = await pool
           .request()
           .execute("sp_GetNotificationSettings");
@@ -570,11 +613,11 @@ export async function registerRoutes(app: Express): Promise<any> {
   app.put(
     "/api/notification-settings",
     authMiddleware,
-    checkRole("manager:hrleader"),
+    checkRole("functionalleader:hrleader"),
     async (req, res) => {
       const { emailNotifications, jobUpdates } = req.body;
       try {
-        const pool = await poolPromise;
+        const pool = await getPool();
         await pool
           .request()
           .input("email_notifications", sql.Bit, emailNotifications ? 1 : 0)
@@ -591,10 +634,10 @@ export async function registerRoutes(app: Express): Promise<any> {
   app.get(
     "/api/user-list",
     authMiddleware,
-    checkRole("manager:hrleader"),
+    checkRole("functionalleader:hrleader"),
     async (req, res) => {
       try {
-        const pool = await poolPromise;
+        const pool = await getPool();
         const result = await pool.request().query(`
           SELECT DISTINCT reviewer as id
           FROM job_reviewers
@@ -618,10 +661,10 @@ export async function registerRoutes(app: Express): Promise<any> {
   app.get(
     "/api/job-description/:jobCode",
     authMiddleware,
-    checkRole("manager:hrleader"),
+    checkRole("functionalleader:hrleader"),
     async (req, res) => {
       try {
-        const pool = await poolPromise;
+        const pool = await getPool();
 
         const result = await pool
           .request()
@@ -638,6 +681,7 @@ export async function registerRoutes(app: Express): Promise<any> {
           job_descriptions.job_summary_ai,
           job_descriptions.job_summary_changes,
           job_descriptions.other_job_description,
+          job_descriptions.other_job_description_ai,
           job_descriptions.is_active,
 --          job_descriptions.is_critical,
           job_descriptions.last_edited_by,
@@ -662,15 +706,16 @@ export async function registerRoutes(app: Express): Promise<any> {
 
           -- Essential Functions AI
           (
-            SELECT oef.function_text
+            SELECT oef.function_text, oef.sort_order
             FROM essential_functions_ai oef WITH (NOLOCK)
             WHERE oef.job_id = jobs.id
+            ORDER BY oef.sort_order, oef.id
             FOR JSON PATH
           ) AS essential_functions_ai,
 
           -- Comments
           (
-            SELECT c.id, c.comment, c.category, c.author, FORMAT(c.created_at, 'MM-dd-yyyy HH:mm') AS createdAt, c.is_critical
+            SELECT c.id, c.comment, c.category, c.author, c.section_key, FORMAT(c.created_at, 'MM-dd-yyyy HH:mm') AS createdAt, c.is_critical
             FROM comments c WITH (NOLOCK)
             WHERE c.job_id = jobs.id
             ORDER BY c.created_at DESC
@@ -682,8 +727,18 @@ export async function registerRoutes(app: Express): Promise<any> {
             SELECT oef.function_text, oef.sort_order, oef.id
             FROM essential_functions_changes oef WITH (NOLOCK)
             WHERE oef.job_id = jobs.id
+            ORDER BY oef.sort_order, oef.id
             FOR JSON PATH
-          ) AS essential_functions_changes
+          ) AS essential_functions_changes,
+
+          -- Reviewer edits to the editable JD elements
+          (
+            SELECT jsc.section_key, jsc.item_text, jsc.sort_order
+            FROM jd_section_changes jsc WITH (NOLOCK)
+            WHERE jsc.job_id = jobs.id
+            ORDER BY jsc.section_key, jsc.sort_order
+            FOR JSON PATH
+          ) AS jd_section_changes
         FROM jobs WITH (NOLOCK)
         LEFT JOIN job_descriptions WITH (NOLOCK) ON jobs.id = job_descriptions.job_id 
         LEFT JOIN job_families WITH (NOLOCK) ON jobs.job_family_id = job_families.id
@@ -705,7 +760,33 @@ export async function registerRoutes(app: Express): Promise<any> {
         job.essential_functions_changes = JSON.parse(
           job?.essential_functions_changes || "[]"
         );
-        job.comments = JSON.parse(job?.comments || "[]").map((c:any) => ({...c, isEditable: (c.author === req.user?.name || !c.author) }));
+        // Every comment belongs to a JD element. An unknown or missing
+        // section_key falls back rather than going unrendered: the editing page
+        // sends back every comment it loaded, and the save below deletes the
+        // caller's comments that are missing from that payload.
+        job.comments = JSON.parse(job?.comments || "[]").map((c: any) => ({
+          ...c,
+          section_key: commentSectionKey(c.section_key),
+          isEditable: c.author === req.user?.name || !c.author,
+        }));
+        // Split the free-text `other_job_description` blobs into the named
+        // Acme Health JD elements the editing page renders. The plain blob holds
+        // the legacy job description, `_ai` the updated one; the editing page
+        // shows one on each panel and falls back to the original when a job
+        // has no updated blob.
+        job.job_description_sections = parseJobDescriptionSections(
+          job?.other_job_description
+        );
+        job.job_description_sections_ai = parseJobDescriptionSections(
+          job?.other_job_description_ai || job?.other_job_description
+        );
+        // Reviewer edits to the editable elements, grouped by element. A key
+        // is present once that element has been saved, even when it was saved
+        // empty, so deleted items do not reappear on the next load.
+        job.job_description_section_changes = groupSectionChanges(
+          JSON.parse(job?.jd_section_changes || "[]")
+        );
+        delete job.jd_section_changes;
         res.json(convertKeysToCamelCase(job));
       } catch (error) {
         log("Error fetching job description:", error);
@@ -717,7 +798,7 @@ export async function registerRoutes(app: Express): Promise<any> {
   app.put(
     "/api/job-description",
     authMiddleware,
-    checkRole("manager:hrleader"),
+    checkRole("functionalleader:hrleader"),
     async (req, res) => {
       try {
         const {
@@ -725,6 +806,7 @@ export async function registerRoutes(app: Express): Promise<any> {
           reviewers = [],
           jobId,
           essentialFunctionsChanges = [],
+          jdSectionChanges = null,
           jobSummaryChanges = "",
           // isCritical,
           comments,
@@ -734,7 +816,7 @@ export async function registerRoutes(app: Express): Promise<any> {
         if (!reviewer) {
           return res.status(400).json({ message: "Reviewer is required" });
         }
-        const pool = await poolPromise;
+        const pool = await getPool();
 
         const allReviewers = await pool.query(
           "SELECT DISTINCT reviewer FROM job_reviewers"
@@ -766,6 +848,8 @@ export async function registerRoutes(app: Express): Promise<any> {
           await deleteMissingUserComments(transaction, jobId, reviewer, payloadIds);
 
           // --- Step 3: Upsert comments from payload ---
+          // Each comment is stored against the JD element it was written under;
+          // commentSectionKey() coerces anything the UI cannot render.
           for (const c of comments) {
             if (isExistingComment(c, dbMap)) {
               await updateIfAuthorMatches(transaction, c, reviewer);
@@ -799,6 +883,7 @@ export async function registerRoutes(app: Express): Promise<any> {
             essentialFunctionsChanges,
             transaction
           );
+          await updateJdSectionChanges(jobId, jdSectionChanges, transaction);
           await replaceResponsiblesAndReviewers(
             jobId,
             // responsibles,
@@ -841,10 +926,11 @@ async function updateIfAuthorMatches(transaction: sql.Transaction, comment: any,
     .input("comment", sql.NVarChar, comment.comment)
     .input("category", sql.NVarChar, comment.category)
     .input("author", sql.NVarChar, user)
+    .input("sectionKey", sql.NVarChar(64), commentSectionKey(comment.sectionKey))
     .input("isCritical", sql.Bit, comment.isCritical)
     .query(`
       UPDATE comments
-      SET comment = @comment, category = @category, author = @author, is_critical = @isCritical
+      SET comment = @comment, category = @category, author = @author, section_key = @sectionKey, is_critical = @isCritical
       WHERE id = @id
         AND (author = @author OR author IS NULL)
     `);
@@ -856,10 +942,11 @@ async function insertComment(transaction: sql.Transaction, comment: any, jobId: 
     .input("comment", sql.NVarChar, comment.comment)
     .input("category", sql.NVarChar, comment.category)
     .input("author", sql.NVarChar, user)
+    .input("sectionKey", sql.NVarChar(64), commentSectionKey(comment.sectionKey))
     .input("isCritical", sql.Bit, comment.isCritical)
     .query(`
-      INSERT INTO comments (job_id, comment, category, author, is_critical)
-      VALUES (@jobId, @comment, @category, @author, @isCritical)
+      INSERT INTO comments (job_id, comment, category, author, section_key, is_critical)
+      VALUES (@jobId, @comment, @category, @author, @sectionKey, @isCritical)
     `);
 
 }
@@ -896,10 +983,10 @@ async function deleteMissingUserComments(
   app.post(
     "/api/job/hr-review",
     authMiddleware,
-    checkRole("manager"),
+    checkRole("functionalleader"),
     async (req, res) => {
       try {
-        const pool = await poolPromise;
+        const pool = await getPool();
         const transaction = new sql.Transaction(pool);
         try {
           const { jobId, jobCode } = req.body;
@@ -942,10 +1029,10 @@ async function deleteMissingUserComments(
   app.post(
     "/api/job/accept-changes",
     authMiddleware,
-    checkRole("manager"),
+    checkRole("functionalleader"),
     async (req, res) => {
       try {
-        const pool = await poolPromise;
+        const pool = await getPool();
         const transaction = new sql.Transaction(pool);
         try {
           const { jobId, jobCode, name } = req.body;
@@ -994,7 +1081,7 @@ async function deleteMissingUserComments(
     async (req, res) => {
       try {
         const { jobId, jobCode, newStatus } = req.body;
-        const pool = await poolPromise;
+        const pool = await getPool();
         const transaction = new sql.Transaction(pool);
         const message = `Job ${jobCode} Marked As Complete`;
         try {
@@ -1032,13 +1119,168 @@ async function deleteMissingUserComments(
     }
   );
 
+  /**
+   * Reset a job's status backwards so an error can be corrected.
+   *
+   *  - HR Leader (or Admin): 'Submitted to HR' / 'Accepted As Is' -> 'In Progress',
+   *    handing the job back to the Functional Leader to view and edit.
+   *  - Admin only: 'Completed' -> 'Submitted to HR', handing the job back to the
+   *    HR Leader to view, edit and complete again.
+   *
+   * checkRole("hrleader") is only a coarse gate here -- it short-circuits for
+   * 'admin', so it cannot express "admin only". The authoritative check is
+   * resetTargetFor(), evaluated against the job's status as read and locked
+   * inside the transaction. The client never gets to say what the current status
+   * is or what it resets to.
+   */
+  app.post(
+    "/api/job/reset-status",
+    authMiddleware,
+    checkRole("hrleader"),
+    async (req, res) => {
+      const jobId = Number(req.body?.jobId);
+      const reason = String(req.body?.reason ?? "").trim();
+      const actorName = req.user?.name ?? "";
+
+      if (!Number.isInteger(jobId) || jobId <= 0) {
+        return res.status(400).json({ message: "A valid jobId is required" });
+      }
+      if (!reason) {
+        return res
+          .status(400)
+          .json({ message: "A reason for the reset is required" });
+      }
+      if (reason.length > RESET_REASON_MAX_LENGTH) {
+        return res.status(400).json({
+          message: `Reason must be ${RESET_REASON_MAX_LENGTH} characters or fewer`,
+        });
+      }
+
+      const actor = {
+        isAdmin: hasRole(req.user, "admin"),
+        isHrLeader: hasRole(req.user, "hrleader"),
+      };
+
+      try {
+        const pool = await getPool();
+        const transaction = new sql.Transaction(pool);
+        try {
+          await transaction.begin();
+
+          const currentResult = await new sql.Request(transaction)
+            .input("jobId", sql.Int, jobId)
+            .query(`
+              SELECT id, job_code, status
+              FROM jobs WITH (UPDLOCK, HOLDLOCK)
+              WHERE id = @jobId
+            `);
+          const job = currentResult.recordset[0];
+
+          if (!job) {
+            await transaction.rollback();
+            return res.status(404).json({ message: "Job not found" });
+          }
+
+          const target = resetTargetFor(job.status, actor);
+          if (!target) {
+            await transaction.rollback();
+            // Tell "you may not do this" apart from "nobody may do this".
+            return isResettableStatus(job.status)
+              ? res.status(403).json({
+                  message:
+                    "Only an Administrator can reset a job in this status",
+                })
+              : res.status(409).json({
+                  message: `A job with status '${job.status}' cannot be reset`,
+                });
+          }
+
+          const isReturnToLeader = target === "In Progress";
+
+          // The status guard closes the race where the job moved on between the
+          // read and the write (two resets, or a reset racing a Save Draft).
+          const updated = await new sql.Request(transaction)
+            .input("jobId", sql.Int, jobId)
+            .input("target", sql.NVarChar(50), target)
+            .input("expected", sql.NVarChar(50), job.status)
+            .input("actor", sql.NVarChar(255), actorName)
+            .query(`
+              UPDATE jobs
+                 SET status = @target,
+                     -- jobs.reviewer is the existing last-writer stamp, written
+                     -- the same way (req.user.name) by PUT /api/job-description.
+                     reviewer = @actor,
+                     last_updated = SYSDATETIME()
+               WHERE id = @jobId AND status = @expected
+            `);
+
+          if (updated.rowsAffected[0] !== 1) {
+            await transaction.rollback();
+            return res.status(409).json({
+              message: "Job status changed while you were resetting it",
+            });
+          }
+
+          const title = isReturnToLeader
+            ? "Job Returned for Edits"
+            : "Job Reopened for HR Review";
+          const message = isReturnToLeader
+            ? `Job ${job.job_code} was returned for edits by ${actorName}: ${reason}`
+            : `Job ${job.job_code} was reopened for HR review by ${actorName}: ${reason}`;
+          // The notification status drives visibility, not just the label:
+          // sp_GetUserNotifications hides rows with status 'Submitted to HR'
+          // from anyone who is not an HR leader. A job returned to the
+          // Functional Leader must therefore NOT use that label, or the person
+          // who needs to act on it would never see it. The admin reset does use
+          // it, because the job really is back in HR's court.
+          const notificationStatus = isReturnToLeader
+            ? "Returned for Edits"
+            : "Submitted to HR";
+
+          await new sql.Request(transaction)
+            .input("jobId", sql.Int, jobId)
+            .input("username", sql.NVarChar(255), "")
+            .input("title", sql.NVarChar(255), title)
+            .input("message", sql.NVarChar(sql.MAX), message)
+            .input("notificationStatus", sql.NVarChar(50), notificationStatus)
+            .query(`
+              DELETE FROM notifications WHERE job_id = @jobId;
+
+              INSERT INTO notifications (
+                username, job_id, title, message, type, category, priority, is_read, status
+              )
+              VALUES (
+                @username, @jobId, @title, @message,
+                'warning', 'job_status', 'high', 0, @notificationStatus
+              );
+            `);
+
+          await transaction.commit();
+          res.status(200).json({
+            message: `Job reset to ${target}`,
+            previousStatus: job.status,
+            status: target,
+          });
+        } catch (error) {
+          log("err ==> ", error);
+          await transaction
+            .rollback()
+            .catch(() => log("Failed to rollback"));
+          res.status(500).json({ message: "Failed to reset job status" });
+        }
+      } catch (error) {
+        res.status(500).json({ message: "Failed to reset job status" });
+      }
+    }
+  );
+
   app.get(
     "/api/export-notifications",
     authMiddleware,
-    checkRole("manager:hrleader"),
+    checkRole("functionalleader:hrleader"),
     async (req: Request, res: Response) => {
       try {
-        const pool = await poolPromise;
+        const pool = await getPool();
         const user = req?.user;
         const isHRLeader = user?.group?.split(":")?.includes("hrleader");
         const result = await pool
@@ -1107,13 +1349,13 @@ async function deleteMissingUserComments(
   app.post(
     "/api/config",
     authMiddleware,
-    checkRole("security"),
+    checkRole("admin"),
     async (req, res) => {
       try {
         const configString = JSON.stringify(req.body.config);
         const encryptedConfig = encrypt(configString);
 
-        const pool = await poolPromise;
+        const pool = await getPool();
         const result = await pool
           .request()
           .input("title", sql.VarChar, req.body.title)
@@ -1135,13 +1377,13 @@ async function deleteMissingUserComments(
   app.put(
     "/api/config/:id",
     authMiddleware,
-    checkRole("security"),
+    checkRole("admin"),
     async (req, res) => {
       try {
         const id = req.params.id as string;
         const configString = JSON.stringify(req.body.config);
         const encryptedConfig = encrypt(configString);
-        const pool = await poolPromise;
+        const pool = await getPool();
         const result = await pool
           .request()
           .input("json_text", sql.VarChar, encryptedConfig)
@@ -1164,11 +1406,11 @@ async function deleteMissingUserComments(
   app.delete(
     "/api/config/:id",
     authMiddleware,
-    checkRole("security"),
+    checkRole("admin"),
     async (req, res) => {
       try {
         const id = req.params.id as string;
-        const pool = await poolPromise;
+        const pool = await getPool();
         const result = await pool.request().input("id", sql.Int, Number(id))
           .query(`
         DELETE FROM configuration
@@ -1188,11 +1430,11 @@ async function deleteMissingUserComments(
   app.get(
     "/api/config/:title",
     authMiddleware,
-    checkRole("security"),
+    checkRole("admin"),
     async (req, res) => {
       try {
         const title = req.params.title as string;
-        const pool = await poolPromise;
+        const pool = await getPool();
         const result = await pool.request().input("title", sql.VarChar, title)
           .query(`
         SELECT * FROM configuration
@@ -1219,10 +1461,10 @@ async function deleteMissingUserComments(
   app.put(
     "/api/config/activate/:id",
     authMiddleware,
-    checkRole("security"),
+    checkRole("admin"),
     async (req, res) => {
       try {
-        const pool = await poolPromise;
+        const pool = await getPool();
         const transaction = new sql.Transaction(pool);
         try {
           await transaction.begin();
@@ -1260,13 +1502,13 @@ async function deleteMissingUserComments(
   app.get(
     "/api/all_notifications",
     authMiddleware,
-    checkRole("manager:hrleader"),
+    checkRole("functionalleader:hrleader"),
     async (req: Request, res: Response) => {
       try {
         const { search, role, status, sortBy, sortOrder } = req.query;
         // const isHRLeader = req.query.isHRLeader === "true" ? true : false;
         const isHRLeader = req?.user?.group?.split(":")?.includes("hrleader");
-        const pool = await poolPromise;
+        const pool = await getPool();
         const result = await pool
           .request()
           .input("isHRLeader", sql.Bit, isHRLeader)
@@ -1298,10 +1540,10 @@ async function deleteMissingUserComments(
   app.get(
     "/api/export-jobs-completed",
     authMiddleware,
-    checkRole("hrleader:manager"),
+    checkRole("hrleader:functionalleader"),
     async (req, res) => {
       try {
-        const pool = await poolPromise;
+        const pool = await getPool();
         const result = await pool.request().execute("dbo.sp_GetCompletedJobs");
         const jobs = result.recordset;
         // Format data
@@ -1316,8 +1558,8 @@ async function deleteMissingUserComments(
           "Functional Leader": job.Reviewers.replace(/\\n/g, "\n"),
           "Comments": job.Comments
             ? JSON.parse(job.Comments)
-                ?.map((c: { Comment: string; Category: string; Author: string; CreatedAt: string; IsCritical: boolean }) => 
-                  `Category: ${c.Category || "N/A"} | Author: ${c.Author || "N/A"} | Created At: ${c.CreatedAt} | Critical: ${c.IsCritical ? "Yes" : "No"}\nComment: ${c.Comment || "N/A"}`
+                ?.map((c: { Comment: string; Category: string; Author: string; SectionKey: string; CreatedAt: string; IsCritical: boolean }) => 
+                  `Section: ${jdSectionLabel(c.SectionKey) || "N/A"} | Category: ${c.Category || "N/A"} | Author: ${c.Author || "N/A"} | Created At: ${c.CreatedAt} | Critical: ${c.IsCritical ? "Yes" : "No"}\nComment: ${c.Comment || "N/A"}`
                 )
                 ?.join("\n\n")
             : "",
@@ -1433,6 +1675,59 @@ async function updateEssentialFunctions(
   }
 }
 
+/**
+ * Replaces the reviewer edits for the editable JD elements. Elements absent
+ * from the payload are left untouched, so a caller that does not know about
+ * these elements cannot wipe them. An element saved with no items keeps a
+ * single sort_order = -1 marker row, which is how "emptied" stays
+ * distinguishable from "never edited".
+ */
+async function updateJdSectionChanges(
+  jobId: number,
+  sectionChanges: Record<string, string[]> | null,
+  transaction: sql.Transaction
+) {
+  if (!sectionChanges) return;
+
+  for (const [sectionKey, items] of Object.entries(sectionChanges)) {
+    if (!isEditableSectionKey(sectionKey)) continue;
+
+    await new sql.Request(transaction)
+      .input("jobId", sql.Int, jobId)
+      .input("sectionKey", sql.NVarChar(64), sectionKey)
+      .query(
+        `DELETE FROM jd_section_changes WHERE job_id = @jobId AND section_key = @sectionKey`
+      );
+
+    const texts = (Array.isArray(items) ? items : [])
+      .map((text) => String(text ?? "").trim())
+      .filter(Boolean);
+
+    if (!texts.length) {
+      await new sql.Request(transaction)
+        .input("jobId", sql.Int, jobId)
+        .input("sectionKey", sql.NVarChar(64), sectionKey)
+        .query(
+          `INSERT INTO jd_section_changes (job_id, section_key, item_text, sort_order)
+           VALUES (@jobId, @sectionKey, '', -1)`
+        );
+      continue;
+    }
+
+    for (let index = 0; index < texts.length; index++) {
+      await new sql.Request(transaction)
+        .input("jobId", sql.Int, jobId)
+        .input("sectionKey", sql.NVarChar(64), sectionKey)
+        .input("itemText", sql.NVarChar(sql.MAX), texts[index])
+        .input("sortOrder", sql.Int, index)
+        .query(
+          `INSERT INTO jd_section_changes (job_id, section_key, item_text, sort_order)
+           VALUES (@jobId, @sectionKey, @itemText, @sortOrder)`
+        );
+    }
+  }
+}
+
 async function replaceResponsiblesAndReviewers(
   jobId: number,
   // responsibles: number[],
@@ -1457,7 +1752,7 @@ async function replaceResponsiblesAndReviewers(
 
 async function getAdConfig() {
   try {
-    const pool = await poolPromise;
+    const pool = await getPool();
     const result = await pool.request().query(`
       SELECT * FROM configuration
       WHERE title = 'active-directory' AND is_active = 1
@@ -1565,17 +1860,19 @@ function searchLdapUser(searchId: string) {
 }
 
 type EnvGroups = {
-  GROUP_SECURITY: string;
-  GROUP_MANAGER: string;
+  GROUP_ADMIN: string;
   GROUP_HRLEADER: string;
+  GROUP_FUNCTIONALLEADER: string;
 };
 
 function getUserGroupRole(
   memberOf: string[],
   env: EnvGroups = {
-    GROUP_SECURITY: process.env.GROUP_SECURITY || "",
-    GROUP_MANAGER: process.env.GROUP_MANAGER || "",
+    // old env var names kept as fallback for existing deployments
+    GROUP_ADMIN: process.env.GROUP_ADMIN || process.env.GROUP_SECURITY || "",
     GROUP_HRLEADER: process.env.GROUP_HRLEADER || "",
+    GROUP_FUNCTIONALLEADER:
+      process.env.GROUP_FUNCTIONALLEADER || process.env.GROUP_MANAGER || "",
   }
 ): string | undefined {
   const extractCN = (dn: string) => {
@@ -1585,22 +1882,22 @@ function getUserGroupRole(
 
   const userGroups = new Set(memberOf.map(extractCN).filter(Boolean));
 
-  const securityGroups = env.GROUP_SECURITY.split(",").map((g) => g.trim());
-  const managerGroups = env.GROUP_MANAGER.split(",").map((g) => g.trim());
+  const adminGroups = env.GROUP_ADMIN.split(",").map((g) => g.trim());
   const hrLeaderGroups = env.GROUP_HRLEADER.split(",").map((g) => g.trim());
+  const functionalLeaderGroups = env.GROUP_FUNCTIONALLEADER.split(",").map((g) => g.trim());
 
   const roles: string[] = [];
 
-  if (securityGroups.some((group) => userGroups.has(group))) {
-    roles.push("security");
+  if (adminGroups.some((group) => userGroups.has(group))) {
+    roles.push("admin");
   }
 
   if (hrLeaderGroups.some((group) => userGroups.has(group))) {
     roles.push("hrleader");
   }
 
-  if (managerGroups.some((group) => userGroups.has(group))) {
-    roles.push("manager");
+  if (functionalLeaderGroups.some((group) => userGroups.has(group))) {
+    roles.push("functionalleader");
   }
 
   return roles.length ? roles.join(":") : undefined;

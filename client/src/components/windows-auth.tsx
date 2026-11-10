@@ -33,7 +33,7 @@ export function WindowsAuth({ onAuthenticated }: WindowsAuthProps) {
           const userData = {
             username: ssoUser.username,
             fullName: ssoUser.username, // Use username as fullName for now
-            email: `${ssoUser.username}@acmehealth.com` // Construct an email
+            email: `${ssoUser.username}@acme-health.com` // Construct an email
           };
           
           // You might want to check if this user exists in your DB

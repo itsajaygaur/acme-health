@@ -5,9 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Eye, EyeOff, AlertTriangle, Clock, HeartPulse, Shield, Loader2 } from "lucide-react";
+import { Eye, EyeOff, AlertTriangle, Clock, Shield, Loader2 } from "lucide-react";
 import { fetchWithCredentials, routeToRedirect } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
+import acmeHealthLogo from "@assets/acme-health-logo.svg";
 
 export default function Login() {
   const [, setLocation] = useLocation();
@@ -19,16 +20,16 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [roles, setRoles] = useState({
+    admin: true,
     hrleader: true,
-    manager: true,
-    security: true,
+    functionalleader: true,
   });
 
   // Active Directory authentication mutation
   const loginMutation = useMutation({
     mutationFn: async (credentials: { email: string; password: string }) => {
         // const hashedPassword = SHA256(password).toString();
-      //aling roles like hrlelader:manager:security
+      // roles are joined like admin:hrleader:functionalleader
 
 
       //fix ts error
@@ -99,10 +100,16 @@ export default function Login() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center">
       <div className="bg-white rounded-lg p-8 shadow-2xl max-w-md w-full mx-4">
+        {/* Logo and Title */}
         <div className="text-center mb-6">
-          <div className="mb-4 inline-flex items-center justify-center gap-2 text-blue-700">
-            <HeartPulse className="h-7 w-7" aria-hidden="true" />
-            <span className="text-xl font-semibold">Acme Health</span>
+          <div className="flex justify-center mb-4">
+            <div className="bg-white p-2">
+              <img
+                src={acmeHealthLogo}
+                alt="Acme Health Logo"
+                className="w-44 h-auto object-contain"
+              />
+            </div>
           </div>
           <h1 className="text-2xl font-bold text-gray-900">Job Management System</h1>
           <p className="text-gray-600 flex items-center justify-center gap-2">
@@ -153,16 +160,16 @@ export default function Login() {
           <div className="space-y-4" >
             <label htmlFor="">Choose your role</label>
             <div className="flex gap-2 items-center" >
+              <Checkbox id="admin" name="admin" checked={roles.admin} onCheckedChange={(value: boolean) => setRoles({ ...roles, admin: value })} />
+              <label htmlFor="admin" className="text-sm" >Admin</label>
+            </div>
+            <div className="flex gap-2 items-center" >
               <Checkbox id="hrleader" name="hrleader" checked={roles.hrleader} onCheckedChange={(value: boolean) => setRoles({ ...roles, hrleader: value })} />
               <label htmlFor="hrleader" className="text-sm" >HR Leader</label>
             </div>
             <div className="flex gap-2 items-center" >
-              <Checkbox id="manager" name="manager" checked={roles.manager} onCheckedChange={(value: boolean) => setRoles({ ...roles, manager: value })} />
-              <label htmlFor="manager" className="text-sm" >Manager</label>  
-            </div>
-            <div className="flex gap-2 items-center" >
-              <Checkbox id="security" name="security" checked={roles.security} onCheckedChange={(value: boolean) => setRoles({ ...roles, security: value })} />
-              <label htmlFor="security" className="text-sm" >Security</label>  
+              <Checkbox id="functionalleader" name="functionalleader" checked={roles.functionalleader} onCheckedChange={(value: boolean) => setRoles({ ...roles, functionalleader: value })} />
+              <label htmlFor="functionalleader" className="text-sm" >Functional Leader</label>
             </div>
           </div>
           
@@ -187,6 +194,10 @@ export default function Login() {
           </Button>
         </form>
 
+        {/* <div className="mt-6 text-center text-xs text-gray-500">
+          <p>Secure authentication through Acme Health Active Directory</p>
+          <p className="mt-1">Contact IT support if you need assistance</p>
+        </div> */}
       </div>
     </div>
   );

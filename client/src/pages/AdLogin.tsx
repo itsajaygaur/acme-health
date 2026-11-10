@@ -5,9 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Eye, EyeOff, AlertTriangle, Clock, HeartPulse, Shield, Loader2 } from "lucide-react";
+import { Eye, EyeOff, AlertTriangle, Clock, Shield, Loader2 } from "lucide-react";
 // import SHA256 from 'crypto-js/sha256';
 import { fetchWithCredentials, getLoggedInUser, routeToRedirect } from "@/lib/utils";
+import acmeHealthLogo from "@assets/acme-health-logo.svg";
 
 export default function AdLogin() {
   const [, setLocation] = useLocation();
@@ -24,7 +25,7 @@ export default function AdLogin() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [domain, setDomain] = useState("@multihosp.net");
+  const [domain, setDomain] = useState("@acme-health.com");
 
   // Active Directory authentication mutation
   const loginMutation = useMutation({
@@ -218,10 +219,16 @@ export default function AdLogin() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center">
       <div className="bg-white rounded-lg p-8 shadow-2xl max-w-md w-full mx-4">
+        {/* Logo and Title */}
         <div className="text-center mb-6">
-          <div className="mb-4 inline-flex items-center justify-center gap-2 text-blue-700">
-            <HeartPulse className="h-7 w-7" aria-hidden="true" />
-            <span className="text-xl font-semibold">Acme Health</span>
+          <div className="flex justify-center mb-4">
+            <div className="bg-white p-2">
+              <img
+                src={acmeHealthLogo}
+                alt="Acme Health Logo"
+                className="w-44 h-auto object-contain"
+              />
+            </div>
           </div>
           <h1 className="text-2xl font-bold text-gray-900">Job Management System</h1>
           <p className="text-gray-600 flex items-center justify-center gap-2">
@@ -272,7 +279,7 @@ export default function AdLogin() {
           <div className="my-4" >
             <label htmlFor="">Domain</label>
           <select value={domain} onChange={(e) => setDomain(e.target.value)} className="w-full p-3 rounded-lg border">
-            <option value="@multihosp.net">multihosp.net</option>
+            <option value="@acme-health.com">acme-health.com</option>
             {/* <option value="localhost">localhost</option> */}
           </select>
           </div>

@@ -4,7 +4,6 @@ import {
   LayoutDashboard,
   Edit3,
   Bell,
-  HeartPulse,
   Shield,
   Eye,
   EyeOff,
@@ -20,6 +19,7 @@ import {
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useState, useEffect } from "react";
+import acmeHealthLogo from "@assets/acme-health-logo.svg";
 import {
   Dialog,
   DialogContent,
@@ -446,12 +446,15 @@ const filterMenuItems = menuItems.filter((item) => {
   }, [searchPreferences]);
 
   return (
-    <div className="bg-blue-900 text-white w-64 min-h-screen p-4 flex flex-col">
-      <div className="mb-6 flex items-center gap-3 border-b border-blue-800 px-2 pb-5 pt-2">
-        <HeartPulse className="h-7 w-7 shrink-0 text-cyan-300" aria-hidden="true" />
-        <div>
-          <p className="text-lg font-semibold leading-tight">Acme Health</p>
-          <p className="mt-1 text-xs text-blue-200">Job Management</p>
+    <div className="bg-blue-900 text-white w-64 shrink-0 h-screen sticky top-0 overflow-y-auto p-4 flex flex-col">
+      {/* Logo Section */}
+      <div className="mb-8 text-center">
+        <div className="bg-white rounded-lg p-3">
+          <img
+            src={acmeHealthLogo}
+            alt="Acme Health Logo"
+            className="w-44 h-auto mx-auto"
+          />
         </div>
       </div>
 
@@ -656,9 +659,9 @@ const filterMenuItems = menuItems.filter((item) => {
                     let value = e.target.value;
                     if (
                       value.includes("@") &&
-                      !value.includes("@acmehealth.com")
+                      !value.includes("@acme-health.com")
                     ) {
-                      value = value.split("@")[0] + "@acmehealth.com";
+                      value = value.split("@")[0] + "@acme-health.com";
                     }
                     setSignInEmail(value);
                   }}
@@ -735,9 +738,9 @@ const filterMenuItems = menuItems.filter((item) => {
                     let value = e.target.value;
                     if (
                       value.includes("@") &&
-                      !value.includes("@acmehealth.com")
+                      !value.includes("@acme-health.com")
                     ) {
-                      value = value.split("@")[0] + "@acmehealth.com";
+                      value = value.split("@")[0] + "@acme-health.com";
                     }
                     setSignUpEmail(value);
                   }}

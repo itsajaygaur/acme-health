@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -60,9 +60,27 @@ import {
 import { Sidebar } from "@/components/sidebar";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
+import { ResetStatusButton } from "@/components/reset-status-dialog";
 import NotificationBell from "./notification-bell";
 import { fetchWithCredentials, getLoggedInUser } from "@/lib/utils";
 import FullScreenLoader from "@/components/full-screen-loader";
+import { JdReadOnlySection } from "@/components/jd-read-only-section";
+import {
+  JdEditableSection,
+  type JdSectionItem,
+} from "@/components/jd-editable-section";
+import {
+  JdSectionComments,
+  type JdCommentDraft,
+} from "@/components/jd-section-comments";
+import {
+  commentSectionKey,
+  JD_LABELS,
+  JD_SECTIONS,
+  type JdComment,
+  type JobDescriptionSectionChanges,
+  type JobDescriptionSections,
+} from "@shared/job-description-fields";
 
 type User = { id: number; name: string };
 
@@ -126,44 +144,7 @@ export default function Editing() {
   const [showNotifications, setShowNotifications] = useState(false);
   const notificationRef = useRef<HTMLDivElement>(null);
   const [commentCategory, setCommentCategory] = useState("");
-  const [comments, setComments] = useState([
-    {
-      id: 1,
-      comment: "Record Vital Signs And Immediately Escalate Critical Values",
-      category: "Critical",
-      author: "John Smith",
-      createdAt: "May 30, 2025",
-      isEditable: true,
-      isCritical: false
-    },
-    {
-      id: 2,
-      comment: "Aid With Patient Hygiene And Nutritional Needs",
-      category: "Non-Critical",
-      author: "Sarah Johnson",
-      createdAt: "May 30, 2025",
-      isEditable: false,
-      isCritical: false
-    },
-    {
-      id: 3,
-      comment: "Maintain Patient Care Logs And Coordinate With Nursing Staff",
-      category: "Non-Critical",
-      author: "Michael Brown",
-      createdAt: "May 30, 2025",
-      isEditable: true,
-      isCritical: false
-    },
-    {
-      id: 4,
-      comment: "Support Safe Patient Transport Within The Facility",
-      category: "Non-Critical",
-      author: "Emily Davis",
-      createdAt: "May 30, 2025",
-      isEditable: false,
-      isCritical: false
-    },
-  ])
+  const [comments, setComments] = useState<JdComment[]>([]);
 
 
   // State for managing multiple last edited by users
@@ -187,8 +168,6 @@ export default function Editing() {
   //   "Additional requirements and considerations for this role may include specialized training, certifications, or equipment handling protocols."
   // );
   const [commentEditable, setCommentEditable] = useState<number | null>(null);
-  const [showAdditionalTextCommentModal, setShowAdditionalTextCommentModal] =
-    useState(false);
   const [additionalTextComment, setAdditionalTextComment] = useState("");
   const [isCritical, setIsCritical] = useState(false);
   const [status, setStatus] = useState("In Progress");
@@ -221,6 +200,162 @@ export default function Editing() {
     enabled: !!jobCode,
   });
 
+  // The JD elements as they appear in the original job description, parsed
+  // server-side from the `other_job_description` blob.
+  const originalSections = (data?.jobDescriptionSections ??
+    {}) as Partial<JobDescriptionSections>;
+
+  // The same elements as they appear in the updated job description. This is
+  // what the Updated panel starts from and what "reset" returns to. The server
+  // already falls back to the original blob for jobs that have no updated one.
+  const updatedSections = (data?.jobDescriptionSectionsAi ??
+    data?.jobDescriptionSections ??
+    {}) as Partial<JobDescriptionSections>;
+
+  // The position summary and the essential job duties the Updated panel starts
+  // from, and what "reset" returns to: the updated (AI) job description, which
+  // a job carries from the moment it is seeded. The reviewer's own edits, when
+  // there are any, are layered on top of these in the hydration effect below.
+  // Same fallback order as dbo.sp_GetJobFinalReview and dbo.sp_GetCompletedJobs
+  // use, so a job nobody has reviewed yet renders its updated content instead
+  // of an empty panel.
+  const baselineJobSummary: string =
+    data?.jobSummaryAi || data?.jobSummaryOriginal || "";
+
+  const baselineEssentialFunctions = useMemo(
+    () =>
+      ((data?.essentialFunctionsAi ?? []) as Array<{ functionText: string }>).map(
+        (ef, index) => ({
+          id: index,
+          text: ef.functionText,
+          hasEdit: false,
+        })
+      ),
+    [data]
+  );
+
+  // Duty lists compare on their text only: ids are positional and hasEdit is
+  // presentational, so neither means the reviewer changed anything.
+  const functionTexts = (functions: Array<{ text: string }>) =>
+    JSON.stringify(functions.map((func) => func.text));
+
+  // Reviewer edits to the editable elements, keyed by element. Items carry a
+  // local id so the list can be reordered and edited without index churn.
+  const [sectionEdits, setSectionEdits] = useState<
+    Record<string, JdSectionItem[]>
+  >({});
+
+  const toSectionItems = (texts?: string[]): JdSectionItem[] =>
+    (texts ?? []).map((text, index) => ({ id: index + 1, text }));
+
+  const updateSectionEdits = (key: string, items: JdSectionItem[]) =>
+    setSectionEdits((prev) => ({ ...prev, [key]: items }));
+
+
+  // Elements reviewers cannot edit directly route change requests through a
+  // comment box shown underneath the element itself, so a reviewer never leaves
+  // the element to comment on it. Only one comment is open at a time, so the
+  // draft lives here and is handed to whichever element hosts the open editor.
+  const commentDraft: JdCommentDraft = {
+    text: additionalTextComment,
+    category: commentCategory,
+    isCritical,
+  };
+
+  const updateCommentDraft = (patch: Partial<JdCommentDraft>) => {
+    if (patch.text !== undefined) setAdditionalTextComment(patch.text);
+    if (patch.category !== undefined) setCommentCategory(patch.category);
+    if (patch.isCritical !== undefined) setIsCritical(patch.isCritical);
+  };
+
+  const clearCommentDraft = () => {
+    setCommentEditable(null);
+    setAdditionalTextComment("");
+    setCommentCategory("");
+    setIsCritical(false);
+  };
+
+  // Comments grouped by the element they belong to. `comments` stays the single
+  // source of truth for saving: PUT /api/job-description deletes the caller's
+  // comments that are missing from the payload, so a comment that was loaded
+  // must never be dropped from state just because a thread does not show it.
+  const commentsBySection = useMemo(() => {
+    const grouped: Record<string, JdComment[]> = {};
+    for (const comment of comments) {
+      const key = commentSectionKey(comment.sectionKey);
+      (grouped[key] ||= []).push(comment);
+    }
+    return grouped;
+  }, [comments]);
+
+  const handleAddSectionComment = (sectionKey: string) => {
+    if (commentEditable) return;
+    const id = Date.now();
+    setComments((prev) => [
+      {
+        id,
+        sectionKey,
+        comment: "",
+        category: "",
+        author: "",
+        createdAt: "",
+        isEditable: true,
+        isCritical: false,
+      },
+      ...prev,
+    ]);
+    setCommentEditable(id);
+    setCommentCategory("");
+    setAdditionalTextComment("");
+    setIsCritical(false);
+  };
+
+  const handleEditComment = (comment: JdComment) => {
+    // One editor at a time: another element's open draft is off screen, so
+    // silently replacing it would lose work the reviewer cannot see.
+    if (commentEditable) return;
+    setAdditionalTextComment(comment.comment);
+    setCommentCategory(comment.category);
+    setIsCritical(comment.isCritical);
+    setCommentEditable(comment.id);
+  };
+
+  const handleCancelComment = (comment: JdComment) => {
+    // A comment that was never saved has nothing to fall back to, so drop it.
+    if (!comment.comment?.trim()) {
+      setComments((prev) => prev.filter((c) => c.id !== comment.id));
+    }
+    clearCommentDraft();
+  };
+
+  const handleSaveComment = (comment: JdComment) => {
+    setComments((prev) =>
+      prev.map((c) =>
+        c.id === comment.id
+          ? {
+              ...c,
+              comment: additionalTextComment,
+              category: commentCategory,
+              isCritical,
+            }
+          : c
+      )
+    );
+    clearCommentDraft();
+  };
+
+  const handleDeleteComment = (id: number) => {
+    setComments((prev) => prev.filter((c) => c.id !== id));
+    if (commentEditable === id) clearCommentDraft();
+  };
+
+  const sectionChangesPayload = () =>
+    Object.fromEntries(
+      Object.entries(sectionEdits).map(([key, items]) => [
+        key,
+        items.map((item) => item.text.trim()).filter(Boolean),
+      ])
+    );
 
   async function updateJobDescription(updateStatus: boolean = false){  
      const res =  await fetchWithCredentials(`/api/job-description`, {
@@ -232,6 +367,7 @@ export default function Editing() {
             ...ef,
             sortOrder: i + 1,
           })),
+          jdSectionChanges: sectionChangesPayload(),
           // responsibles: responsibleUsers.map((u) => u.id),
           reviewers: reviewers.map((u) => u.id),
           // isCritical: isCritical,
@@ -633,24 +769,14 @@ const acceptChangesMutation = useMutation({
   };
 
   const handleResetFunctions = () => {
-    // Reset to original database state
-    // setEssentialFunctions([...originalEssentialFunctions]);
-    setEssentialFunctions(data?.essentialFunctionsAi?.map(
-        (ef: {
-          functionText: string;
-        }, id: number) => ({
-          //id: ef.sortOrder,
-          id: id,
-          text: ef.functionText,
-          hasEdit: true,
-        })
-      ) || [] || []);
+    // Back to the updated job description, discarding the reviewer's edits.
+    setEssentialFunctions(baselineEssentialFunctions);
     setFunctionsHistory([]);
   };
 
   const handleResetJobSummary = () => {
-    // Reset job summary to original database state
-    setJobSummary(data?.jobSummaryAi);
+    // Back to the updated job description, discarding the reviewer's edits.
+    setJobSummary(baselineJobSummary);
     setIsEditingJobSummary(false);
   };
 
@@ -790,17 +916,6 @@ const acceptChangesMutation = useMutation({
   //   setIsEditingAdditionalText(false);
   // };
 
-  const handleAdditionalTextComment = () => {
-    setShowAdditionalTextCommentModal(true);
-  };
-
-  const handleSaveAdditionalTextComment = () => {
-    // Save the comment functionality here
-    // console.log("Additional text comment saved:", additionalTextComment);
-    setShowAdditionalTextCommentModal(false);
-    // setAdditionalTextComment("");
-  };
-
   // Helper function to count words
   const countWords = (text: string) => {
     return text
@@ -813,7 +928,7 @@ const acceptChangesMutation = useMutation({
   const handleEditJobSummary = () => {
     // Always open popup for text editing
     setPopupJobSummary(jobSummary);
-    setPopupOriginalJobSummary(data?.jobSummaryAi);
+    setPopupOriginalJobSummary(baselineJobSummary);
     setPopupHistory([jobSummary]);
     setPopupChanges([]);
     setShowJobSummaryPopup(true);
@@ -971,67 +1086,62 @@ const acceptChangesMutation = useMutation({
     setShowJobSummaryCloseConfirmation(false);
   };
 
-  const handleCancelAdditionalTextComment = () => {
-    setAdditionalTextComment("");
-    setShowAdditionalTextCommentModal(false);
-  };
-
   const loggedInUser = getLoggedInUser()
 
   useEffect(() => {
     setResponsibleUsers(data?.responsibles || []);
     setReviewers(data?.reviewers || []);
-    setJobSummary(data?.jobSummaryChanges || "");
+    setJobSummary(data?.jobSummaryChanges || baselineJobSummary);
+    // Fall back to the original values until this element has been saved: an
+    // element present in the changes has been edited, even if it is empty.
+    const savedSections = (data?.jobDescriptionSectionChanges ??
+      {}) as JobDescriptionSectionChanges;
+    const sections = (data?.jobDescriptionSectionsAi ??
+      data?.jobDescriptionSections ??
+      {}) as Partial<JobDescriptionSections>;
+    setSectionEdits(
+      Object.fromEntries(
+        JD_SECTIONS.filter((section) => section.editability === "editable").map(
+          (section) => [
+            section.key,
+            toSectionItems(savedSections[section.key] ?? sections[section.key]),
+          ]
+        )
+      )
+    );
     // setIsCritical(data?.isCritical || false);
     // setAdditionalText(data?.otherJobDescription || "");
-    setAdditionalTextComment(data?.comments || "")
     setComments(data?.comments || [])
     setIsCompleted(data?.status === "Completed" || data?.status === "Accepted As Is" || ((data?.status === "Submitted to HR" && !loggedInUser.group?.split(':')?.includes('hrleader')) ? true : false) );
     setEssentialFunctions(
-      data?.essentialFunctionsChanges?.map(
-        (ef: {
-          sortOrder: number;
-          hasEdit: boolean;
-          functionText: string;
-          id: number;
-        }) => ({
-          //id: ef.sortOrder,
-          id: ef.id,
-          text: ef.functionText,
-          hasEdit: ef.hasEdit,
-        })
-      ) || []
+      data?.essentialFunctionsChanges?.length
+        ? data.essentialFunctionsChanges.map(
+            (ef: {
+              sortOrder: number;
+              hasEdit: boolean;
+              functionText: string;
+              id: number;
+            }) => ({
+              //id: ef.sortOrder,
+              id: ef.id,
+              text: ef.functionText,
+              hasEdit: ef.hasEdit,
+            })
+          )
+        : baselineEssentialFunctions
     );
-  }, [data]);
+  }, [data, baselineJobSummary, baselineEssentialFunctions]);
 
     // Function to check for changes
     
     const checkForChanges = () => {
-    const summaryChanged = jobSummary !== data?.jobSummaryAi;
+    const summaryChanged = jobSummary !== baselineJobSummary;
     const isCriticalChanged = isCritical !== data?.isCritical;
-    
-    const functionChanges = JSON.stringify(essentialFunctions) !== JSON.stringify( data?.essentialFunctionsChanges?.map(
-        (ef: {
-          sortOrder: number;
-          hasEdit: boolean;
-          functionText: string;
-          id: number;
-        }) => ({
-          //id: ef.sortOrder,
-          id: ef.id,
-          text: ef.functionText,
-          hasEdit: ef.hasEdit,
-        })
-      ))
 
-  const essentialFunctionChanged =   JSON.stringify(essentialFunctions.map(c => ({text: c.text}))) !== JSON.stringify(data?.essentialFunctionsAi?.map((ef: {
-                        functionText: string;
-                      }) => ({
-                        text: ef.functionText,
-                      })
-                    ))
-    // Check if job summary has changed
-    // const essentialFunctionChanged = functionChanges || functionAiChanges
+    const essentialFunctionChanged =
+      functionTexts(essentialFunctions) !==
+      functionTexts(baselineEssentialFunctions);
+
     const hasAnyChanges =
       summaryChanged ||
       essentialFunctionChanged ||
@@ -1323,7 +1433,9 @@ const acceptChangesMutation = useMutation({
               </div>
               <div className="p-6">
                 <div className="mb-6">
-                  <h4 className="font-semibold mb-3">Job Summary</h4>
+                  <h4 className="font-semibold mb-3">
+                    {JD_LABELS.positionSummary}
+                  </h4>
                   {/* <div className="bg-blue-50 border-l-4 border-blue-500 p-4 mb-4">
                     </div> */}
                   <p className="text-sm">{data?.jobSummaryOriginal}</p>
@@ -1338,7 +1450,9 @@ const acceptChangesMutation = useMutation({
                 </div>
 
                 <div className="mb-6">
-                  <h4 className="font-semibold mb-3">Essential Functions</h4>
+                  <h4 className="font-semibold mb-3">
+                    {JD_LABELS.essentialFunctions}
+                  </h4>
                   <ol className="space-y-2 text-sm">
                     {data?.essentialFunctionsOriginal?.map(
                       (func: { functionText: string }, index: number) => (
@@ -1349,10 +1463,13 @@ const acceptChangesMutation = useMutation({
                     )}
                   </ol>
                 </div>
-                <div >
-                 <h4 className="font-semibold mb-3">Other Job Description</h4>
-                  <pre className="text-sm whitespace-pre-wrap break-words" style={{fontFamily: "Inter, sans-serif"}} >{data?.otherJobDescription}</pre>
-                </div>
+                {JD_SECTIONS.map((section) => (
+                  <JdReadOnlySection
+                    key={section.key}
+                    label={section.label}
+                    items={originalSections[section.key]}
+                  />
+                ))}
 
                 {/* <div className="text-sm text-gray-600 leading-relaxed">
                   <p>
@@ -1387,7 +1504,9 @@ const acceptChangesMutation = useMutation({
               <div className="p-6">
                 <div className="mb-6">
                   <div className="flex items-center justify-between mb-3">
-                    <h4 className="font-semibold">Job Summary</h4>
+                    <h4 className="font-semibold">
+                      {JD_LABELS.positionSummary}
+                    </h4>
                     <div className="flex items-center space-x-2">
                       {/* <div className="flex items-center space-x-2">
                         <input
@@ -1416,12 +1535,12 @@ const acceptChangesMutation = useMutation({
                         <Pencil className="w-4 h-4" />
                       </Button>
                       <AlertDialog>
-                        <AlertDialogTrigger disabled={isCompleted || jobSummary === data?.jobSummaryAi}>
+                        <AlertDialogTrigger disabled={isCompleted || jobSummary === baselineJobSummary}>
                           <Button
                             size="sm"
                             variant="ghost"
                             // onClick={handleResetJobSummary}
-                            disabled={isCompleted || jobSummary === data?.jobSummaryAi}
+                            disabled={isCompleted || jobSummary === baselineJobSummary}
                             title="Reset to original job summary"
                           >
                             <RotateCcw className="w-4 h-4" />
@@ -1498,7 +1617,9 @@ const acceptChangesMutation = useMutation({
 
                 <div className="mb-6">
                   <div className="flex items-center justify-between mb-3">
-                    <h4 className="font-semibold">Essential Functions</h4>
+                    <h4 className="font-semibold">
+                      {JD_LABELS.essentialFunctions}
+                    </h4>
                     <div className="flex space-x-2">
                       <Button
                         size="sm"
@@ -1511,23 +1632,13 @@ const acceptChangesMutation = useMutation({
                       </Button>
                       <AlertDialog>
                         <AlertDialogTrigger 
-                           disabled={isCompleted || JSON.stringify(essentialFunctions.map(c => ({text: c.text}))) === JSON.stringify(data?.essentialFunctionsAi?.map((ef: {
-                        functionText: string;
-                      }) => ({
-                        text: ef.functionText,
-                      })
-                    ))}
+                           disabled={isCompleted || functionTexts(essentialFunctions) === functionTexts(baselineEssentialFunctions)}
                     >
                           <Button
                             size="sm"
                             variant="ghost"
                             // onClick={handleResetFunctions}
-                           disabled={isCompleted || JSON.stringify(essentialFunctions.map(c => ({text: c.text}))) === JSON.stringify(data?.essentialFunctionsAi?.map((ef: {
-                        functionText: string;
-                      }) => ({
-                        text: ef.functionText,
-                      })
-                    ))}
+                           disabled={isCompleted || functionTexts(essentialFunctions) === functionTexts(baselineEssentialFunctions)}
                             title="Reset to original functions"
                           >
                             <RotateCcw className="w-4 h-4" />
@@ -1640,281 +1751,56 @@ const acceptChangesMutation = useMutation({
                   </div>
                 </div>
 
-                {/* Comments Section */}
-                <div className="mb-6">
-                  <div className="flex items-center justify-between mb-3">
-                    <h4 className="font-semibold">
-                      Comments
-                    </h4>
-                    <div className="flex items-center space-x-3">
-                      {/* <Button
-                        size="sm"
-                        variant="ghost"
-                        // onClick={handleEditAdditionalText}
-                        title="Edit comments"
-                        disabled={isCompleted}
-                      >
-                        <Pencil className="w-4 h-4" />
-                      </Button> */}
-
-                              <Button size="sm" disabled={isCompleted} onClick={() => {
-                                if(commentEditable){
-                                  return
-                                }
-                                const generatedId = Date.now();
-                                setComments(prev => [
-                                  {
-                                    id: Date.now(),
-                                    category: "",
-                                    comment: "",
-                                    author: "",
-                                    createdAt: '',
-                                    isEditable: true,
-                                    isCritical: false
-                                  },
-                                  ...prev,
-                                ]);
-                                setCommentEditable(generatedId);
-                                setAdditionalTextComment("");
-                                
-                              }} className="flex items-center gap-2">
-                                <Plus  /> Add Comment
-                              </Button>
-                    </div>
-                  </div>
-
-<div className="space-y-4">
-
-  {comments?.map((comment, index) => (
-    <div
-      key={index}
-      className="bg-white shadow-sm rounded-xl border border-gray-200 p-4"
-    >
-      {commentEditable === comment.id ? (
-        <div className="space-y-4">
-          {/* Category Selector */}
-          <div className="flex gap-4 items-end" >
-            <div>
-              <label className="text-sm font-medium text-gray-700">Category</label>
-              <Select defaultValue={comment.category} onValueChange={(value) => setCommentCategory(value)}>
-                <SelectTrigger className="w-[200px] h-9 mt-1">
-                  <SelectValue placeholder="Select a Category" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    <SelectLabel>Category</SelectLabel>
-                    <SelectItem value="generic">Generic</SelectItem>
-                    <SelectItem value="normal">Normal</SelectItem>
-                    <SelectItem value="security">Security</SelectItem>
-                    <SelectItem value="other">Other</SelectItem>
-                    {/* <SelectItem value="apple">Generic</SelectItem>
-                    <SelectItem value="banana"></SelectItem>
-                    <SelectItem value="blueberry">Blueberry</SelectItem>
-                    <SelectItem value="grapes">Grapes</SelectItem>
-                    <SelectItem value="pineapple">Pineapple</SelectItem> */}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </div>
-
-              <div className="flex items-center space-x-2 mb-2" title="Please note, we are currently working on updating content related to the Other Job Description.  Please only check this box if the comment below is related to a field in the Other Job Description section that needs to be addressed prior to January 1st, 2026." >
-                <input
-                  type="checkbox"
-                  id="critical-checkbox"
-                  defaultChecked={comment.isCritical}
-                  onChange={(e) => setIsCritical(e.target.checked)}
-                  className="h-4 w-4 text-red-600 bg-gray-100 border-gray-300 rounded focus:ring-red-500 focus:ring-2"
-                  disabled={isCompleted}
-                />
-                <label
-                  htmlFor="critical-checkbox"
-                  className="text-sm font-medium cursor-pointer text-red-600"
-                >
-                  Critical
-                </label>
-              </div>
-          </div>
-
-          {/* Textarea */}
-          <div>
-            <label className="text-sm font-medium text-gray-700">
-              Comment
-            </label>
-            <Textarea
-              value={additionalTextComment}
-              disabled={!commentCategory && !comment.category}
-              onChange={(e) => setAdditionalTextComment(e.target.value)}
-              className="min-h-[120px] resize-none mt-1"
-              placeholder="Write your comment..."
-              autoFocus
-            />
-          </div>
-
-          {/* Actions */}
-          <div className="flex justify-end gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                setCommentEditable(null)
-                setCommentCategory("")
-                setAdditionalTextComment("")
-                if(!comment.comment?.trim()){
-                  setComments(prev => prev.filter(c => c.id !== comment.id))
-                }
-              }}
-            >
-              Cancel
-            </Button>
-            <Button 
-                size="sm" 
-                className="bg-blue-600 text-white hover:bg-blue-700"
-                disabled={(!commentCategory) || (!additionalTextComment?.trim()) } 
-                onClick={() => {
-                  setComments(prev => prev.map(c => {
-                    if(c.id === comment.id){
-                      return {...c, comment: additionalTextComment, isCritical: isCritical, category: commentCategory}
-                    }
-                    return c
-                  }))
-                  setCommentEditable(null)
-                  setAdditionalTextComment("")
-                  setCommentCategory("")
-                }}>
-              Save
-            </Button>
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          <div className="flex justify-between items-center">
-            {/* Meta Info */}
-            <div className="flex flex-col gap-1">
-              <div>
-
-              {comment.category && <span className="inline-flex items-center text-xs px-2 py-1 bg-gray-100 text-gray-700 rounded-full w-fit">
-                {comment.category}
-              </span>}
-              {comment.isCritical && 
-              <span className="inline-flex items-center text-xs px-2 py-0.5 bg-red-100 text-red-700 rounded-full ml-2" >
-                Critical
-              </span>}
-              </div>
-              <div className="flex gap-2 text-xs text-gray-500 items-center">
-                { comment.author && 
-                <>
-                <p>{comment.author}</p>
-                <span>•</span>
-                </>
-                }
-                <p>{comment.createdAt}</p>
-              </div>
-            </div>
-
-
-            {
-              comment.isEditable &&
-            <div>
-
-            {/* Edit Button */}
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={() =>  {
-                setAdditionalTextComment(comment.comment) 
-                setCommentCategory(comment.category)
-                setCommentEditable(comment.id); 
-              }}
-              className="h-8 w-8 rounded-full"
-              disabled={isCompleted}
-            >
-
-              <Pencil className="h-4 w-4" />
-            </Button>
-            {/* Delete Icon */}
-
-
-              <AlertDialog>
-                <AlertDialogTrigger disabled={isCompleted} >
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    // onClick={() => setComments(prev => prev.filter(c => c.id !== comment.id))}
-                    className="h-8 w-8 rounded-full"
-                    disabled={isCompleted}
-                  >
-                    <Trash2 className="h-4 w-4 text-destructive" />
-                  </Button>
-                </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    Are you sure you want to delete this comment?
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>
-                    Cancel
-                  </AlertDialogCancel>
-                  <AlertDialogAction onClick={() => setComments(prev => prev.filter(c => c.id !== comment.id))}>
-                    Yes
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-
-
-        
-            </div>
-            }
-
-          </div>
-
-          {/* Comment Text */}
-          <p className="text-gray-800 leading-relaxed">{comment.comment}</p>
-        </div>
-      )}
-    </div>
-  ))}
-
-</div>
-
-                 
-
-                    {/* {isEditingAdditionalText ? (
-                      <div className="space-y-3">
-                        <Textarea
-                          value={additionalTextComment}
-                          onChange={(e) => setAdditionalTextComment(e.target.value)}
-                          className="min-h-[120px] resize-none"
-                          placeholder="Add comments here..."
-                          autoFocus
+                {JD_SECTIONS.map((section) =>
+                  section.editability === "editable" ? (
+                    <JdEditableSection
+                      key={section.key}
+                      label={section.label}
+                      items={sectionEdits[section.key] ?? []}
+                      onChange={(items) =>
+                        updateSectionEdits(section.key, items)
+                      }
+                      onReset={() =>
+                        updateSectionEdits(
+                          section.key,
+                          toSectionItems(updatedSections[section.key])
+                        )
+                      }
+                      canReset={
+                        JSON.stringify(
+                          (sectionEdits[section.key] ?? []).map((i) => i.text)
+                        ) !== JSON.stringify(updatedSections[section.key] ?? [])
+                      }
+                      disabled={isCompleted}
+                    />
+                  ) : (
+                    <JdReadOnlySection
+                      key={section.key}
+                      label={section.label}
+                      items={updatedSections[section.key]}
+                      onAddComment={
+                        section.editability === "comment"
+                          ? () => handleAddSectionComment(section.key)
+                          : undefined
+                      }
+                      disabled={isCompleted}
+                    >
+                      {section.editability === "comment" && (
+                        <JdSectionComments
+                          comments={commentsBySection[section.key] ?? []}
+                          editingCommentId={commentEditable}
+                          draft={commentDraft}
+                          onDraftChange={updateCommentDraft}
+                          onEdit={handleEditComment}
+                          onCancel={handleCancelComment}
+                          onSave={handleSaveComment}
+                          onDelete={handleDeleteComment}
+                          disabled={isCompleted}
                         />
-                        <div className="flex justify-end space-x-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={handleCancelAdditionalText}
-                          >
-                            Cancel
-                          </Button>
-                          <Button size="sm" onClick={handleSaveAdditionalText}>
-                            Save
-                          </Button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="group relative">
-                        <p className="text-sm text-gray-500 leading-relaxed italic">
-                          {additionalTextComment ||
-                            "Add comments here..."}
-                        </p>
-                      </div>
-                    )} */}
-
-
-                </div>
+                      )}
+                    </JdReadOnlySection>
+                  )
+                )}
               </div>
             </div>
           </div>
@@ -1976,6 +1862,18 @@ const acceptChangesMutation = useMutation({
                 {isCompleted ? "Finished" : "Complete"}
               </Button>
             )}
+            <ResetStatusButton
+              jobId={data?.id}
+              jobCode={jobCode}
+              status={data?.status}
+              onReset={() => {
+                queryClient.invalidateQueries({
+                  queryKey: ["job-description", jobCode],
+                });
+                queryClient.invalidateQueries({ queryKey: ["jobs"] });
+                queryClient.invalidateQueries({ queryKey: ["notifications"] });
+              }}
+            />
             <Button
               variant="outline"
               className="bg-purple-100 text-purple-700 border-purple-300 hover:bg-purple-200"
@@ -2134,7 +2032,9 @@ const acceptChangesMutation = useMutation({
           <AlertDialogHeader>
             <AlertDialogTitle>Accept Changes</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure? Changes cannot be undone.
+              Are you sure? Once accepted, the job goes to HR and you will not be
+              able to edit it. If you accept in error, an HR Leader can reset the
+              job back to you.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -2154,7 +2054,9 @@ const acceptChangesMutation = useMutation({
           <AlertDialogHeader>
             {/* <AlertDialogTitle>Complete this Job</AlertDialogTitle> */}
             <AlertDialogDescription className="text-black text-base" >
-              Please confirm all updates have been completed. Once the edits have been submitted it cannot be retrieved.
+              Please confirm all updates have been completed. Once submitted you
+              will not be able to edit this job; if it is completed in error, an
+              Administrator can reset it back to you.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -2167,53 +2069,6 @@ const acceptChangesMutation = useMutation({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      {/* Additional Text Comment Modal */}
-      <Dialog
-        open={showAdditionalTextCommentModal}
-        onOpenChange={() => {
-          // Prevent closing unless explicitly cancelled or saved
-          return;
-        }}
-      >
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>Add Comment</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <label
-                htmlFor="additional-text-comment"
-                className="text-sm font-medium"
-              >
-                Comment
-              </label>
-              <Textarea
-                id="additional-text-comment"
-                value={additionalTextComment}
-                onChange={(e) => setAdditionalTextComment(e.target.value)}
-                placeholder="Enter your comment here..."
-                className="min-h-[100px]"
-                autoFocus
-              />
-            </div>
-          </div>
-          <div className="flex justify-end space-x-2">
-            <Button
-              variant="outline"
-              onClick={handleCancelAdditionalTextComment}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleSaveAdditionalTextComment}
-              // disabled={!additionalTextComment?.trim()}
-            >
-              Save
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {/* Compare Versions Modal */}
       <Dialog open={showCompareModal} onOpenChange={setShowCompareModal}>
@@ -2239,7 +2094,7 @@ const acceptChangesMutation = useMutation({
                   {/* Job Summary */}
                   <div>
                     <h4 className="font-medium text-gray-900 mb-3">
-                      Job Summary
+                      {JD_LABELS.positionSummary}
                     </h4>
                     <div className="bg-gray-50 p-4 rounded-lg">
                       <p className="text-sm text-gray-700">
@@ -2251,7 +2106,7 @@ const acceptChangesMutation = useMutation({
                   {/* Essential Functions */}
                   <div>
                     <h4 className="font-medium text-gray-900 mb-3">
-                      Essential Functions
+                      {JD_LABELS.essentialFunctions}
                     </h4>
                     <div className="space-y-3">
                       {originalEssentialFunctions.map((func, index) => (
@@ -2302,7 +2157,7 @@ const acceptChangesMutation = useMutation({
                   {/* Job Summary */}
                   <div>
                     <h4 className="font-medium text-gray-900 mb-3">
-                      Job Summary
+                      {JD_LABELS.positionSummary}
                     </h4>
                     <div className="bg-gray-50 p-4 rounded-lg">
                       <p className="text-sm text-gray-700">{jobSummary}</p>
@@ -2312,7 +2167,7 @@ const acceptChangesMutation = useMutation({
                   {/* Essential Functions */}
                   <div>
                     <h4 className="font-medium text-gray-900 mb-3">
-                      Essential Functions
+                      {JD_LABELS.essentialFunctions}
                     </h4>
                     <div className="space-y-3">
                       {essentialFunctions.map((func, index) => (

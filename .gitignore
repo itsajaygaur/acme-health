@@ -3,8 +3,7 @@
 
 
 ##environment variables
-.env*
-!.env.example
+.env
 
 ### Angular ###
 ## Angular ##

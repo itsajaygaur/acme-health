@@ -46,23 +46,31 @@ export function SummaryCards({ data, isLoading, variant = 'default' }: SummaryCa
     );
   }
 
-  const totalJobs = data.totalUsers; // 9000
-  const jobsReviewed = data.jobsReviewed; // 71
-  const inProgress = data.inProgress; // 132
-  const notStarted = data.notStarted; // 8560
+  // A count can be missing when the summary is derived from a partial source
+  // (e.g. the job-family filter on the dashboard) — render 0 rather than
+  // throwing on .toLocaleString() of undefined and blanking the whole page.
+  const count = (value: number | undefined | null) =>
+    typeof value === "number" && Number.isFinite(value) ? value : 0;
+  const formatCount = (value: number | undefined | null) =>
+    count(value).toLocaleString();
+
+  const totalJobs = count(data.totalUsers); // 9000
+  const jobsReviewed = count(data.jobsReviewed); // 71
+  const inProgress = count(data.inProgress); // 132
+  const notStarted = count(data.notStarted); // 8560
   const reviewedPercentage = totalJobs > 0 ? ((jobsReviewed / totalJobs) * 100).toFixed(1) : "0.0";
   const inProgressPercentage = totalJobs > 0 ? ((inProgress / totalJobs) * 100).toFixed(1) : "0.0";
   const notStartedPercentage = totalJobs > 0 ? ((notStarted / totalJobs) * 100).toFixed(1) : "0.0";
   
   // Calculate percentages for second row using totalJobs as denominator
-  const hrReviewPercentage = totalJobs > 0 ? ((data.submittedToHr / totalJobs) * 100).toFixed(1) : "0.0";
-  const completedPercentage = totalJobs > 0 ? ((data.completed / totalJobs) * 100).toFixed(1) : "0.0";
+  const hrReviewPercentage = totalJobs > 0 ? ((count(data.submittedToHr) / totalJobs) * 100).toFixed(1) : "0.0";
+  const completedPercentage = totalJobs > 0 ? ((count(data.completed) / totalJobs) * 100).toFixed(1) : "0.0";
 
   // Default row configuration (first row)
   const defaultCards = [
     {
       title: "Total Jobs",
-      value: data.totalUsers.toLocaleString(),
+      value: formatCount(data.totalUsers),
       icon: Users,
       iconBg: "bg-blue-100",
       iconColor: "text-primary",
@@ -72,7 +80,7 @@ export function SummaryCards({ data, isLoading, variant = 'default' }: SummaryCa
     },
     {
       title: "Not Started",
-      value: data.notStarted.toLocaleString(),
+      value: formatCount(data.notStarted),
       icon: XCircle,
       iconBg: "bg-orange-100",
       iconColor: "text-orange-600",
@@ -82,7 +90,7 @@ export function SummaryCards({ data, isLoading, variant = 'default' }: SummaryCa
     },
     {
       title: "In Progress",
-      value: data.inProgress.toLocaleString(),
+      value: formatCount(data.inProgress),
       icon: TrendingUp,
       iconBg: "bg-purple-100",
       iconColor: "text-green-600",
@@ -106,7 +114,7 @@ export function SummaryCards({ data, isLoading, variant = 'default' }: SummaryCa
   const secondCards = [
     {
       title: "Submitted To HR",
-      value: data.submittedToHr.toLocaleString(),
+      value: formatCount(data.submittedToHr),
       icon: Shield,
       iconBg: "bg-blue-100",
       iconColor: "text-primary",
@@ -116,7 +124,7 @@ export function SummaryCards({ data, isLoading, variant = 'default' }: SummaryCa
     },
     {
       title: "Completed",
-      value: data.completed.toLocaleString(),
+      value: formatCount(data.completed),
       icon: CheckCircle,
       iconBg: "bg-green-100",
       iconColor: "text-green-600",

@@ -24,7 +24,7 @@ import {
   AlertDialogCancel,
 } from "@/components/ui/alert-dialog";
 import { useLocation } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { useRole } from "@/contexts/RoleContext";
 import {
@@ -51,9 +51,13 @@ import {
 import { Sidebar } from "@/components/sidebar";
 import { Badge } from "@/components/ui/badge";
 import { fetchWithCredentials } from "@/lib/utils";
+import { JD_LABELS, JD_SECTIONS } from "@shared/job-description-fields";
+import { JdReadOnlySection } from "@/components/jd-read-only-section";
+import { ResetStatusButton } from "@/components/reset-status-dialog";
 
 export default function JobFinalReview() {
   const [, setLocation] = useLocation();
+  const queryClient = useQueryClient();
   const { isAdminMode } = useRole();
   const [jobCode, setJobCode] = useState("");
 
@@ -103,7 +107,10 @@ export default function JobFinalReview() {
       ? jobFinalReview.reviewers
       : ["No reviewers available"];
 
-  const status = "Completed"; // Example status, replace with actual logic
+  // The API already returns the real status (sp_GetJobFinalReview selects
+  // j.status); an Administrator can reset a completed job, after which this
+  // page is no longer the right view for it.
+  const status: string | undefined = jobDetails?.status;
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
@@ -177,7 +184,7 @@ export default function JobFinalReview() {
                     : "bg-blue-100 text-blue-800"
                 }
               >
-                {status}
+                {status ?? "N/A"}
               </Badge>
             </div>
           </div>
@@ -248,7 +255,7 @@ export default function JobFinalReview() {
               <div className="p-6">
                 <div className="mb-6">
                   <div className="flex items-center justify-between mb-3">
-                    <h4 className="font-semibold">Job Summary</h4>
+                    <h4 className="font-semibold">{JD_LABELS.positionSummary}</h4>
                   </div>
                   <div className="p-4">
                     <p className="text-sm">{jobDetails?.jobSummary ?? "No Job Summary available"}</p>
@@ -257,7 +264,7 @@ export default function JobFinalReview() {
 
                 <div className="mb-6">
                   <div className="flex items-center justify-between mb-3">
-                    <h4 className="font-semibold">Essential Functions</h4>
+                    <h4 className="font-semibold">{JD_LABELS.essentialFunctions}</h4>
                   </div>
                   <div className="space-y-3 pl-4">
                     {essentialFunctionData.map((func: string, index: number) => (
@@ -270,8 +277,34 @@ export default function JobFinalReview() {
                     ))}
                   </div>
                 </div>
+
+                {JD_SECTIONS.map((section) => (
+                  <JdReadOnlySection
+                    key={section.key}
+                    label={section.label}
+                    items={jobFinalReview?.jobDescriptionSections?.[section.key]}
+                  />
+                ))}
               </div>
             </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="w-fit mx-auto mt-8 mb-8">
+            <ResetStatusButton
+              jobId={jobDetails?.id}
+              jobCode={jobCode}
+              status={status}
+              onReset={() => {
+                queryClient.invalidateQueries({
+                  queryKey: ["finalReview", jobCode],
+                });
+                queryClient.invalidateQueries({ queryKey: ["jobs"] });
+                queryClient.invalidateQueries({ queryKey: ["notifications"] });
+                // No longer 'Completed', so this read-only view no longer applies.
+                setLocation(`/editing?jobCode=${encodeURIComponent(jobCode)}`);
+              }}
+            />
           </div>
         </div>
       </main>
