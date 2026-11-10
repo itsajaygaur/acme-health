@@ -1,8 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, HeartPulse, Loader2 } from "lucide-react";
+import { ArrowRight, Loader2 } from "lucide-react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { fetchWithCredentials, routeToRedirect } from "@/lib/utils";
+import acmeHealthLogo from "@assets/acme-health-logo.svg";
 
 export default function Home() {
   const [, setLocation] = useLocation();
@@ -39,10 +40,14 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center p-4">
       <div className="text-center">
+        {/* Logo positioned slightly higher than center */}
         <div className="mb-8 flex justify-center">
-          <div className="inline-flex items-center gap-3 rounded-lg bg-white px-5 py-3 text-blue-700 shadow-lg">
-            <HeartPulse className="h-8 w-8" aria-hidden="true" />
-            <span className="text-2xl font-semibold">Acme Health</span>
+          <div className="bg-white p-4 shadow-2xl rounded-lg">
+            <img
+              src={acmeHealthLogo}
+              alt="Acme Health Logo"
+              className="w-48 h-auto object-contain"
+            />
           </div>
         </div>
         
@@ -55,7 +60,7 @@ export default function Home() {
         
         {/* Main title */}
         <h1 className="text-5xl md:text-6xl font-bold text-white mb-4">
-          Acme Health Job Review
+          Job Review System
         </h1>
         
         {/* Subtitle */}

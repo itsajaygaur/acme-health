@@ -16,7 +16,7 @@ interface User {
   name: string;
   email: string;
   password: string,
-  role: "Admin" | "HR Manager" | "Reviewer" | "Employee";
+  role: "Admin" | "HR Leader" | "Functional Leader";
   department: string;
   status: "Active" | "InActive";
   last_login: string;
@@ -37,7 +37,7 @@ export default function UsersComponent() {
   const [newUser, setNewUser] = useState<Partial<User>>({
     name: "",
     email: "",
-    role: "Employee",
+    role: "Functional Leader",
     department: "",
     status: "Active"
   });
@@ -138,12 +138,10 @@ export default function UsersComponent() {
     switch (role) {
       case "Admin":
         return "bg-purple-100 text-purple-800";
-      case "HR Manager":
+      case "HR Leader":
         return "bg-blue-100 text-blue-800";
-      case "Reviewer":
+      case "Functional Leader":
         return "bg-green-100 text-green-800";
-      case "Employee":
-        return "bg-gray-100 text-gray-800";
       default:
         return "bg-gray-100 text-gray-800";
     }
@@ -180,7 +178,7 @@ export default function UsersComponent() {
         setNewUser({
           name: "",
           email: "",
-          role: "Employee",
+          role: "Functional Leader",
           department: "",
           status: "Active"
         });
@@ -304,8 +302,8 @@ export default function UsersComponent() {
   
   const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
-    if (value.endsWith('@') && !value.includes('acmehealth.com')) {
-      setNewUser({ ...newUser, email: value + 'acmehealth.com' });
+    if (value.endsWith('@') && !value.includes('acme-health.com')) {
+      setNewUser({ ...newUser, email: value + 'acme-health.com' });
     } else {
       setNewUser({ ...newUser, email: value });
     }
@@ -343,9 +341,8 @@ export default function UsersComponent() {
             <SelectContent>
               <SelectItem value="all">All Roles</SelectItem>
               <SelectItem value="Admin">Admin</SelectItem>
-              <SelectItem value="HR Manager">HR Manager</SelectItem>
-              <SelectItem value="Reviewer">Reviewer</SelectItem>
-              <SelectItem value="Employee">Employee</SelectItem>
+              <SelectItem value="HR Leader">HR Leader</SelectItem>
+              <SelectItem value="Functional Leader">Functional Leader</SelectItem>
             </SelectContent>
           </Select>
 
@@ -413,7 +410,7 @@ export default function UsersComponent() {
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{user.name}</td>
                     {/* <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{user.email}</td> */}
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <Badge variant={user.role === 'Admin' ? 'destructive' : user.role === 'HR Manager' ? 'default' : 'secondary'}>
+                      <Badge variant={user.role === 'Admin' ? 'destructive' : user.role === 'HR Leader' ? 'default' : 'secondary'}>
                         {user.role}
                       </Badge>
                     </td>
@@ -528,9 +525,8 @@ export default function UsersComponent() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="Admin">Admin</SelectItem>
-                  <SelectItem value="HR Manager">HR Manager</SelectItem>
-                  <SelectItem value="Reviewer">Reviewer</SelectItem>
-                  <SelectItem value="Employee">Employee</SelectItem>
+                  <SelectItem value="HR Leader">HR Leader</SelectItem>
+                  <SelectItem value="Functional Leader">Functional Leader</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -660,9 +656,8 @@ export default function UsersComponent() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="Admin">Admin</SelectItem>
-                    <SelectItem value="HR Manager">HR Manager</SelectItem>
-                    <SelectItem value="Reviewer">Reviewer</SelectItem>
-                    <SelectItem value="Employee">Employee</SelectItem>
+                    <SelectItem value="HR Leader">HR Leader</SelectItem>
+                    <SelectItem value="Functional Leader">Functional Leader</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

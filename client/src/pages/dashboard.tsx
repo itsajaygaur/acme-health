@@ -47,7 +47,7 @@ export default function Dashboard() {
     useState("asc");
   const [reviewersPageSortColumn, setReviewersPageSortColumn] = useState("full_name");
   const [selectedJobFamily, setSelectedJobFamily] =
-    useState<any | null>(null);
+    useState<DashboardJobFamily | null>(null);
   const [showNotifications, setShowNotifications] = useState(false);
   const [jobFamilySearch, setJobFamilySearch] = useState("");
   const [jobFamilySortDirection, setJobFamilySortDirection] = useState("asc");
@@ -211,11 +211,11 @@ export default function Dashboard() {
     const filteredSummary: DashboardSummary = {
       ...summaryData,
       totalUsers: selectedJobFamily.totalJobs,
-       jobsReviewed: selectedJobFamily.jobsReviewed,
-       inProgress: selectedJobFamily.inprogress,
-       notStarted: selectedJobFamily.jobsNotStarted,
-       submittedToHr: selectedJobFamily.submittedToHr,
-       completed: selectedJobFamily.completed
+      jobsReviewed: selectedJobFamily.jobsReviewed,
+      inProgress: selectedJobFamily.jobsInProgress,
+      notStarted: selectedJobFamily.jobsNotStarted,
+      submittedToHr: selectedJobFamily.jobsSubmittedToHr,
+      completed: selectedJobFamily.jobsCompleted,
       //orders: selectedJobFamily.totalJobs - selectedJobFamily.jobsReviewed, // In progress jobs
     };
 

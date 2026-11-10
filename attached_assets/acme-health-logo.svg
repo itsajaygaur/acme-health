@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 145">
+  <text x="8" y="100" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="82" font-weight="700" fill="#122751">Acme</text>
+  <text x="222" y="100" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="82" font-weight="400" fill="#122751">Health</text>
+  <path d="M360 120c22 24 55 24 77 0" fill="none" stroke="#B0E5DA" stroke-width="8" stroke-linecap="round"/>
+</svg>

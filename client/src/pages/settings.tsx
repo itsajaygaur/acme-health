@@ -85,7 +85,7 @@ interface User {
   id: number;
   name: string;
   email: string;
-  role: "Admin" | "HR Manager" | "Reviewer" | "Employee";
+  role: "Admin" | "HR Leader" | "Functional Leader";
   department: string;
   status: "Active" | "Inactive";
   lastLogin: string;
@@ -509,7 +509,7 @@ export default function Settings() {
     name: "",
     email: "",
     password: "",
-    role: "Employee",
+    role: "Functional Leader",
     department: "",
     status: "Active",
   });
@@ -530,7 +530,7 @@ export default function Settings() {
       id: 2,
       name: "Sarah Johnson",
       email: "sarah.johnson@company.com",
-      role: "HR Manager",
+      role: "HR Leader",
       department: "Human Resources",
       status: "Active",
       lastLogin: "June 3, 2025",
@@ -540,7 +540,7 @@ export default function Settings() {
       id: 3,
       name: "Michael Brown",
       email: "michael.brown@company.com",
-      role: "Reviewer",
+      role: "Functional Leader",
       department: "Operations",
       status: "Active",
       lastLogin: "June 2, 2025",
@@ -550,7 +550,7 @@ export default function Settings() {
       id: 4,
       name: "Emily Davis",
       email: "emily.davis@company.com",
-      role: "Employee",
+      role: "Functional Leader",
       department: "Marketing",
       status: "Inactive",
       lastLogin: "May 30, 2025",
@@ -560,7 +560,7 @@ export default function Settings() {
       id: 5,
       name: "David Wilson",
       email: "david.wilson@company.com",
-      role: "Reviewer",
+      role: "Functional Leader",
       department: "Quality Assurance",
       status: "Active",
       lastLogin: "June 1, 2025",
@@ -579,8 +579,8 @@ export default function Settings() {
     {
       id: 7,
       name: "Clinical Support",
-      email: "clinical.support@acmehealth.com",
-      role: "Reviewer",
+      email: "clinical.support@acme-health.com",
+      role: "Functional Leader",
       department: "Clinical Support",
       status: "Active",
       lastLogin: "June 5, 2025",
@@ -589,8 +589,8 @@ export default function Settings() {
     {
       id: 8,
       name: "Emergency Medicine",
-      email: "emergency.medicine@acmehealth.com",
-      role: "Reviewer",
+      email: "emergency.medicine@acme-health.com",
+      role: "Functional Leader",
       department: "Emergency Medicine",
       status: "Active",
       lastLogin: "June 4, 2025",
@@ -599,8 +599,8 @@ export default function Settings() {
     {
       id: 9,
       name: "Nursing",
-      email: "nursing@acmehealth.com",
-      role: "Reviewer",
+      email: "nursing@acme-health.com",
+      role: "Functional Leader",
       department: "Nursing",
       status: "Active",
       lastLogin: "June 3, 2025",
@@ -609,8 +609,8 @@ export default function Settings() {
     {
       id: 10,
       name: "Pharmacy",
-      email: "pharmacy@acmehealth.com",
-      role: "Reviewer",
+      email: "pharmacy@acme-health.com",
+      role: "Functional Leader",
       department: "Pharmacy",
       status: "Active",
       lastLogin: "June 2, 2025",
@@ -715,8 +715,8 @@ export default function Settings() {
 
   const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
-    if (value.endsWith("@") && !value.includes("acmehealth.com")) {
-      setNewUser({ ...newUser, email: value + "acmehealth.com" });
+    if (value.endsWith("@") && !value.includes("acme-health.com")) {
+      setNewUser({ ...newUser, email: value + "acme-health.com" });
     } else {
       setNewUser({ ...newUser, email: value });
     }
@@ -768,7 +768,7 @@ export default function Settings() {
         name: "",
         email: "",
         password: "",
-        role: "Employee",
+        role: "Functional Leader",
         department: "",
         status: "Active",
       });
@@ -1552,9 +1552,8 @@ export default function Settings() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="Admin">Admin</SelectItem>
-                  <SelectItem value="HR Manager">HR Manager</SelectItem>
-                  <SelectItem value="Reviewer">Reviewer</SelectItem>
-                  <SelectItem value="Employee">Employee</SelectItem>
+                  <SelectItem value="HR Leader">HR Leader</SelectItem>
+                  <SelectItem value="Functional Leader">Functional Leader</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -1803,9 +1802,8 @@ export default function Settings() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="Admin">Admin</SelectItem>
-                    <SelectItem value="HR Manager">HR Manager</SelectItem>
-                    <SelectItem value="Reviewer">Reviewer</SelectItem>
-                    <SelectItem value="Employee">Employee</SelectItem>
+                    <SelectItem value="HR Leader">HR Leader</SelectItem>
+                    <SelectItem value="Functional Leader">Functional Leader</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
